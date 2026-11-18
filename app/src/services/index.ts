@@ -51,3 +51,22 @@ export const pendingAnniversary = {
   set: (d: string) => sessionStorage.setItem(PENDING_ANNIV, d),
   clear: () => sessionStorage.removeItem(PENDING_ANNIV),
 };
+
+/** 로그인 전에 입력한 닉네임 (2026-11-18 순서 변경: 소개 → 닉네임 → 사귄 날 → 로그인) — 로그인 직후 계정에 저장한다 */
+const PENDING_NICK = 'uriduri.pendingNickname';
+export const pendingNickname = {
+  get: () => sessionStorage.getItem(PENDING_NICK),
+  set: (n: string) => sessionStorage.setItem(PENDING_NICK, n),
+  clear: () => sessionStorage.removeItem(PENDING_NICK),
+};
+
+/** 이 기기에서 앱 소개를 본 적 있는지 — 본 사람은 스플래시 뒤 바로 로그인으로 (2026-11-18 사용자 결정) */
+const onboardedKey = () => (backend.mode === 'local' ? `uriduri.onboarded.${localPerson()}` : 'uriduri.onboarded');
+export const onboarded = {
+  get: (): boolean => {
+    try { return localStorage.getItem(onboardedKey()) === '1'; } catch { return false; }
+  },
+  set: () => {
+    try { localStorage.setItem(onboardedKey(), '1'); } catch { /* 못 남겨도 다음에 소개를 한 번 더 볼 뿐 */ }
+  },
+};

@@ -6,6 +6,7 @@ import { dday, fmtDate } from './lib/dates';
 import { isNew, sortReceipts } from './lib/board';
 import {
   backend,
+  onboarded,
   pendingAnniversary,
   pendingInvite,
   type Position,
@@ -21,6 +22,7 @@ import { ComposeScreen } from './screens/ComposeScreen';
 import { DetailScreen } from './screens/DetailScreen';
 import { SettingsScreen } from './screens/SettingsScreen';
 import { DevPersonSwitch } from './components/DevPersonSwitch';
+import { IntroScreen, SplashScreen } from './screens/IntroScreens';
 
 export type Nav = (r: Route, opts?: { replace?: boolean }) => void;
 
@@ -56,8 +58,16 @@ function toView(rec: ReceiptRec, s: Session, reads: Set<string>, src?: string): 
 
 /** 로그인·프로필·방 상태에 따라 갈 수 있는 화면을 정한다 (R1~R3 흐름) */
 function guard(route: Route, s: Session): Route | null {
-  const open = route.name === 'login' || route.name === 'invite';
-  if (!s.user) return open ? null : { name: 'login' };
+  // 로그인 전 순서 (2026-11-18): 스플래시 → 소개 4장 → 닉네임 → 사귄 날 → 로그인
+  // 이 기기에서 소개를 본 사람은 스플래시 → 바로 로그인
+  if (!s.user) {
+    if (route.name === 'invite' && !onboarded.get()) {
+      pendingInvite.set(route.token); // 소개·닉네임을 마치고 초대 화면으로 돌아온다
+      return { name: 'intro' };
+    }
+    const open = ['login', 'invite', 'intro', 'nickname', 'anniversary'].includes(route.name);
+    return open ? null : { name: onboarded.get() ? 'login' : 'intro' };
+  }
   if (!s.profile) return route.name === 'nickname' ? null : { name: 'nickname' };
   if (!s.room) {
     if (['anniversary', 'noroom', 'invite'].includes(route.name)) return null;
@@ -66,7 +76,7 @@ function guard(route: Route, s: Session): Route | null {
     // 상대가 방을 지웠으면 안내가 있는 방 만들기 화면으로 (R13)
     return { name: pendingAnniversary.get() || s.profile.roomDeletedNotice ? 'noroom' : 'anniversary' };
   }
-  if (['login', 'nickname', 'anniversary', 'noroom'].includes(route.name)) return { name: 'list' };
+  if (['login', 'intro', 'nickname', 'anniversary', 'noroom'].includes(route.name)) return { name: 'list' };
   return null;
 }
 
@@ -103,11 +113,18 @@ export default function App() {
     return next;
   }, []);
 
+  // 스플래시: 로그인 전 상태로 앱을 처음 열었을 때만 (2026-11-18 사용자 결정). 로그아웃 뒤에는 다시 안 나온다
+  const [splash, setSplash] = useState<'wait' | 'show' | 'done'>('wait');
+  const endSplash = useCallback(() => setSplash('done'), []);
+
   const [bootErr, setBootErr] = useState(false);
   const bootUp = useCallback(() => {
     setBoot(true);
     refreshSession()
-      .then(() => setBootErr(false))
+      .then((s) => {
+        setBootErr(false);
+        setSplash((v) => (v === 'wait' ? (s.user ? 'done' : 'show') : v));
+      })
       .catch(() => setBootErr(true))
       .finally(() => setBoot(false));
   }, [refreshSession]);
@@ -221,6 +238,9 @@ export default function App() {
       </div>
     );
   }
+  if (splash === 'show') {
+    return <div className="grain min-h-screen"><div className="relative z-0 mx-auto max-w-[390px]"><SplashScreen onDone={endSplash} /></div></div>;
+  }
   if (boot || guard(route, sess)) {
     return <div className="grain min-h-screen" aria-busy="true" />;
   }
@@ -232,8 +252,9 @@ export default function App() {
       <div ref={screenRef} key={key} className="relative z-0 mx-auto min-h-screen max-w-[390px]">
         {route.name === 'login' && <LoginScreen nav={navigate} onSignedIn={refreshSession} />}
         {route.name === 'invite' && <InviteScreen token={route.token} session={sess} nav={navigate} onJoined={reloadAll} onSignedIn={refreshSession} />}
-        {route.name === 'nickname' && <NicknameScreen nav={navigate} onSaved={refreshSession} />}
-        {route.name === 'anniversary' && <AnniversaryScreen nav={navigate} />}
+        {route.name === 'intro' && <IntroScreen nav={navigate} />}
+        {route.name === 'nickname' && <NicknameScreen nav={navigate} loggedIn={!!sess.user} onSaved={refreshSession} />}
+        {route.name === 'anniversary' && <AnniversaryScreen nav={navigate} loggedIn={!!sess.user} />}
         {route.name === 'noroom' && sess.profile && <NoRoomScreen profile={sess.profile} nav={navigate} onCreated={refreshSession} onSignedOut={refreshSession} />}
         {route.name === 'created' && <RoomCreatedScreen nav={navigate} />}
         {route.name === 'list' && sess.room && (

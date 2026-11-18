@@ -10,6 +10,7 @@ import {
   lastProvider,
   pendingAnniversary,
   pendingInvite,
+  pendingNickname,
   rememberProvider,
   suspectProvider,
   PROVIDER_NAMES,
@@ -44,6 +45,7 @@ export function LoginScreen({ nav, invite = false, onSignedIn }: { nav: Nav; inv
   const failed = new URLSearchParams(window.location.search).has('error') || window.location.hash.includes('error');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(failed);
+  const nickname = pendingNickname.get();
   const login = async (p: Provider) => {
     setBusy(true);
     setErr(false);
@@ -51,6 +53,10 @@ export function LoginScreen({ nav, invite = false, onSignedIn }: { nav: Nav; inv
       suspectProvider.check(p); // 지난 방식과 다르면 "혹시 ○○로 방을 만드셨나요?"를 보여 주려고 기억
       await backend.signIn(p);
       rememberProvider(p);
+      // 로그인 전에 입력한 닉네임을 계정에 저장 — 이미 계정에 닉네임이 있으면 그대로 둔다 (2026-11-18 순서 변경)
+      const nick = pendingNickname.get();
+      if (nick && !(await backend.getProfile())) await backend.saveNickname(nick);
+      pendingNickname.clear();
       await onSignedIn(); // 다음 화면은 App이 정한다
       if (!invite) nav({ name: 'list' }, { replace: true });
     } catch {
@@ -67,6 +73,7 @@ export function LoginScreen({ nav, invite = false, onSignedIn }: { nav: Nav; inv
           <CoupleMark className="h-16 w-[6.4rem] text-ink" />
           <span className="text-2xl font-bold tracking-tight">우리두리</span>
         </h1>
+        {nickname && <p className="mt-6 text-center text-sm text-fade"><b className="text-ink">{nickname}</b>님, 마지막으로 로그인만 하면 돼요</p>}
         {err && <div className="mt-6"><Notice tone="error">로그인하지 못했어요. 다시 시도해 주세요.</Notice></div>}
       </div>
       <div className="mt-10 space-y-2">
@@ -174,18 +181,25 @@ export function InviteScreen({
 }
 
 /** 닉네임 입력 (D30) */
-export function NicknameScreen({ nav, onSaved }: { nav: Nav; onSaved: () => Promise<unknown> }) {
-  const [nick, setNick] = useState('');
+// 로그인 전(소개 다음)에는 기억만 해 두고 로그인 직후 저장한다. 로그인 후에 오면(소개를 건너뛴 경우) 바로 저장 (2026-11-18)
+export function NicknameScreen({ nav, loggedIn, onSaved }: { nav: Nav; loggedIn: boolean; onSaved: () => Promise<unknown> }) {
+  const [nick, setNick] = useState(() => pendingNickname.get() ?? '');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(false);
   const next = async () => {
     setBusy(true);
     setErr(false);
     try {
-      await backend.saveNickname(nick);
-      await onSaved();
       // 초대받은 사람은 사귄 날을 묻지 않는다 (D39)
       const token = pendingInvite.get();
+      if (!loggedIn) {
+        if (!isValidText(nick, LIMITS.nickname)) throw new Error('invalid');
+        pendingNickname.set(nick.trim());
+        nav(token ? { name: 'invite', token } : { name: 'anniversary' }); // 초대 화면은 로그인 전이면 로그인을 보여 준다
+        return;
+      }
+      await backend.saveNickname(nick);
+      await onSaved();
       nav(token ? { name: 'invite', token } : { name: 'anniversary' }, { replace: true });
     } catch {
       setErr(true);
@@ -213,7 +227,8 @@ export function NicknameScreen({ nav, onSaved }: { nav: Nav; onSaved: () => Prom
 }
 
 /** 사귄 날 입력 (D37) — 닉네임 다음. 휠 피커, 오늘 날짜에서 시작. 사귄 날 = 1일 (D38) */
-export function AnniversaryScreen({ nav }: { nav: Nav }) {
+// 로그인 전이면 다음은 로그인, 로그인 후면(방이 지워져 다시 만드는 경우 등) 방 만들기 (2026-11-18)
+export function AnniversaryScreen({ nav, loggedIn }: { nav: Nav; loggedIn: boolean }) {
   const today = todayIso();
   const [date, setDate] = useState(pendingAnniversary.get() ?? today);
   return (
@@ -235,7 +250,7 @@ export function AnniversaryScreen({ nav }: { nav: Nav }) {
           <p className="mt-1 text-right text-xs text-fade">사귄 날을 1일로 세요</p>
         </div>
         <p className="text-xs text-fade">초대받은 상대에게는 묻지 않아요. 설정에서 둘 다 고칠 수 있어요.</p>
-        <Button onClick={() => { pendingAnniversary.set(date); nav({ name: 'noroom' }); }}>다음</Button>
+        <Button onClick={() => { pendingAnniversary.set(date); nav({ name: loggedIn ? 'noroom' : 'login' }); }}>다음</Button>
       </main>
     </>
   );
@@ -295,6 +310,7 @@ export function NoRoomScreen({
       if (res !== 'ok') throw new Error(res);
       pendingAnniversary.clear();
       pendingInvite.clear();
+      pendingNickname.clear();
       suspectProvider.clear();
       await onSignedOut();
       nav({ name: 'login' }, { replace: true });

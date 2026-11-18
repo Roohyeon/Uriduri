@@ -2,6 +2,7 @@
 export type Route =
   | { name: 'list' }
   | { name: 'login' }
+  | { name: 'intro' }
   | { name: 'invite'; token: string }
   | { name: 'nickname' }
   | { name: 'anniversary' }
@@ -17,6 +18,7 @@ const ID = '([A-Za-z0-9_-]{1,64})';
 const table: [RegExp, (m: RegExpExecArray) => Route][] = [
   [/^\/$/, () => ({ name: 'list' })],
   [/^\/login$/, () => ({ name: 'login' })],
+  [/^\/welcome\/intro$/, () => ({ name: 'intro' })],
   [new RegExp(`^/i/${ID}$`), (m) => ({ name: 'invite', token: m[1] })],
   [/^\/welcome\/nickname$/, () => ({ name: 'nickname' })],
   [/^\/welcome\/anniversary$/, () => ({ name: 'anniversary' })],
@@ -41,6 +43,7 @@ export function routePath(r: Route): string {
   switch (r.name) {
     case 'list': return '/';
     case 'login': return '/login';
+    case 'intro': return '/welcome/intro';
     case 'invite': return `/i/${r.token}`;
     case 'nickname': return '/welcome/nickname';
     case 'anniversary': return '/welcome/anniversary';
@@ -58,6 +61,7 @@ export function routePath(r: Route): string {
 export const routeTitle: Record<Route['name'], string> = {
   list: '우리 보드',
   login: '로그인',
+  intro: '앱 소개',
   invite: '초대',
   nickname: '닉네임 정하기',
   anniversary: '사귄 날',
