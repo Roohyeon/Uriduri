@@ -1,6 +1,7 @@
 // 주소 ↔ 화면 (디자인 보류 C4: 주소에 화면을 반영해 새로고침·뒤로가기가 되게) — 순수 함수
 export type Route =
   | { name: 'list' }
+  | { name: 'desk' }
   | { name: 'login' }
   | { name: 'intro' }
   | { name: 'invite'; token: string }
@@ -17,6 +18,7 @@ export type Route =
 const ID = '([A-Za-z0-9_-]{1,64})';
 const table: [RegExp, (m: RegExpExecArray) => Route][] = [
   [/^\/$/, () => ({ name: 'list' })],
+  [/^\/today$/, () => ({ name: 'desk' })],
   [/^\/login$/, () => ({ name: 'login' })],
   [/^\/welcome\/intro$/, () => ({ name: 'intro' })],
   [new RegExp(`^/i/${ID}$`), (m) => ({ name: 'invite', token: m[1] })],
@@ -42,6 +44,7 @@ export function parseRoute(pathname: string): Route {
 export function routePath(r: Route): string {
   switch (r.name) {
     case 'list': return '/';
+    case 'desk': return '/today';
     case 'login': return '/login';
     case 'intro': return '/welcome/intro';
     case 'invite': return `/i/${r.token}`;
@@ -60,6 +63,7 @@ export function routePath(r: Route): string {
 /** 탭 제목에 쓰는 화면 이름 */
 export const routeTitle: Record<Route['name'], string> = {
   list: '우리 보드',
+  desk: '오늘',
   login: '로그인',
   intro: '앱 소개',
   invite: '초대',

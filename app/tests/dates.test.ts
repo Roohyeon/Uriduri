@@ -34,3 +34,12 @@ test('사귄 날 전 영수증은 D-로 (음수 D+ 막기)', () => {
   assert.deepEqual(fmtDplus(dday('2026-11-17', '2026-11-16')), { short: 'D-1', long: '사귄 날 1일 전' });
   assert.deepEqual(fmtDplus(dday('2026-11-17', '2026-11-08')), { short: 'D-9', long: '사귄 날 9일 전' });
 });
+
+test('다음 100일 기념일', async () => {
+  const { nextMilestone, addDays } = await import('../src/lib/dates.ts');
+  assert.deepEqual(nextMilestone(412), { day: 500, left: 88 });
+  assert.deepEqual(nextMilestone(400), { day: 400, left: 0 });
+  assert.deepEqual(nextMilestone(1), { day: 100, left: 99 });
+  assert.deepEqual(nextMilestone(-5), { day: 100, left: 105 });
+  assert.equal(addDays('2026-12-30', 3), '2027-01-02');
+});

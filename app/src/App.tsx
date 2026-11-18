@@ -21,6 +21,7 @@ import { ListScreen } from './screens/ListScreen';
 import { ComposeScreen } from './screens/ComposeScreen';
 import { DetailScreen } from './screens/DetailScreen';
 import { SettingsScreen } from './screens/SettingsScreen';
+import { DeskScreen } from './screens/DeskScreen';
 import { DevPersonSwitch } from './components/DevPersonSwitch';
 import { IntroScreen, SplashScreen } from './screens/IntroScreens';
 
@@ -269,6 +270,8 @@ export default function App() {
             onJoinSeen={() => { void backend.markJoinNoticeSeen(); }}
           />
         )}
+        {/* 홈 '오늘의 책상' 시안 (2026-11-19) — 지금은 /today 로만 연다 */}
+        {route.name === 'desk' && sess.room && <DeskScreen session={sess} board={board} nav={navigate} />}
         {route.name === 'compose' && sess.room && (
           <ComposeScreen me={sess.profile?.nickname ?? ''} anniversary={sess.room.anniversary} nav={navigate} onDone={afterPublish} />
         )}

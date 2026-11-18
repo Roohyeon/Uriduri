@@ -69,3 +69,18 @@ export function exifToIso(v: Date | string | undefined | null): IsoDate | undefi
 
 /** a가 b보다 나중인가 */
 export const isAfter = (a: IsoDate, b: IsoDate) => utcMs(a) > utcMs(b);
+
+/**
+ * 다음 100일 단위 기념일 (홈 '오늘의 책상' 시안).
+ * 오늘이 딱 기념일이면 left 0. 예: D+412 → { day: 500, left: 88 }
+ */
+export function nextMilestone(dplus: number, step = 100): { day: number; left: number } {
+  const day = dplus >= 1 && dplus % step === 0 ? dplus : Math.max(step, Math.ceil(dplus / step) * step);
+  return { day, left: day - dplus };
+}
+
+/** 날짜에 n일 더하기 */
+export function addDays(iso: IsoDate, n: number): IsoDate {
+  const d = new Date(utcMs(iso) + n * 86_400_000);
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
+}
