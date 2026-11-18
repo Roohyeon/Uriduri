@@ -1,0 +1,18 @@
+# 키 (공개용 키도 config.js는 올리지 않는다 — 예시 파일만 올림)
+app/public/config.js
+.env
+.env.*
+!.env.example
+
+# 빌드·의존성
+node_modules/
+dist/
+*.tsbuildinfo
+
+# 이 저장소에는 앱 코드(app/)와 prd.md만 올린다 (2026-11-18 사용자 결정)
+design/
+dev/
+planning/*
+!planning/uriduri/
+planning/uriduri/*
+!planning/uriduri/prd.md

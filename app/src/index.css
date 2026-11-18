@@ -1,0 +1,325 @@
+@import 'tailwindcss';
+
+/* 디자인 토큰 — design/uriduri/01-direction.md 와 1:1. 기본 팔레트는 끄고 토큰만 쓴다. */
+@theme {
+  --color-*: initial;
+  --color-counter: #e6e7e9;
+  --color-paper: #fcfcfa;
+  --color-ink: #1f2023;
+  --color-fade: #5f5688; /* 2026-11-17 #6e6496→ 회색 바탕 대비 4.32→5.35 [03-1.4.3] */
+  --color-seal: #c93a2b;
+  --color-seal-ink: #a92e21; /* 빨간 글씨 전용(오류 안내, 위험 행): 오류 바탕 5.9:1, 회색 바탕 5.48:1 [03-1.4.3] */
+  --color-rule: #c9cacd;
+  --color-edge: #7d8086; /* 입력칸·테두리 버튼 테두리: 종이 위 3.85:1 [03-1.4.11] */
+  --color-error-bg: #fbecea;
+  --color-ok-bg: #eceef6;
+  --color-openq: #e0b100;
+  /* 레퍼런스 반영(2026-11-16): 끈·왁스 실링, 파스텔 집게, 프린터 슬롯, 폴라로이드 */
+  --color-wine: #7a1f2b;
+  --color-wine-hi: #a8343f;
+  --color-frame: #ffffff;
+  --color-board: #f4f5f7;
+  --color-clip-pink: #f2b8c6;
+  --color-clip-sky: #b8d3ea;
+  --color-clip-butter: #f2e2a0;
+  --color-tape: #e9dcc4;
+  --color-slot-hi: #dadbde;
+  --color-slot: #b7bac0;
+  --color-slot-lo: #8d9096;
+  --color-transparent: transparent;
+
+  --font-*: initial;
+  --font-body: 'Pretendard Variable', Pretendard, system-ui, -apple-system, 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
+  --font-receipt: 'IBM Plex Mono', 'Pretendard Variable', Pretendard, ui-monospace, monospace;
+
+  --text-*: initial;
+  --text-xs: 12px;
+  --text-sm: 14px;
+  --text-base: 16px;
+  --text-lg: 20px;
+  --text-xl: 24px;
+
+  --spacing: 4px;
+
+  --radius-*: initial;
+  --radius-none: 0;
+  --radius-sm: 4px;
+  --radius-full: 9999px;
+
+  --shadow-*: initial;
+  --shadow-paper: 0 1px 0 #d5d6d9, 0 6px 14px -8px rgb(31 32 35 / 0.25);
+}
+
+@layer base {
+  html,
+  body {
+    background: var(--color-counter);
+    color: var(--color-ink);
+    font-family: var(--font-body);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    word-break: keep-all; /* 한국어를 단어 중간에서 끊지 않는다 [02-10] */
+    overflow-wrap: anywhere; /* 띄어쓰기 없는 긴 글자는 넘치지 않게 끊는다 [04 Receipt] */
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+  html {
+    scroll-padding-top: 72px; /* 위에 붙은 시안 도구막대가 초점을 가리지 않게 */
+  }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    /* 인라인 전환까지 포함해 모든 전환 효과를 끈다 [04 Board:173, Detail:94] */
+    *, *::before, *::after { transition-duration: 0.01ms !important; }
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-ink);
+    outline-offset: 2px;
+  }
+}
+
+/* 영수증 위·아래 톱니 (높이 8px, 간격 12px) */
+.tear-top,
+.tear-bottom {
+  height: 8px;
+  background-repeat: repeat-x;
+  background-size: 12px 8px;
+}
+.tear-top {
+  background-image: linear-gradient(135deg, transparent 50%, var(--color-paper) 50%),
+    linear-gradient(225deg, transparent 50%, var(--color-paper) 50%);
+}
+.tear-bottom {
+  background-image: linear-gradient(45deg, transparent 50%, var(--color-paper) 50%),
+    linear-gradient(315deg, transparent 50%, var(--color-paper) 50%);
+}
+/* 영수증 사이 절취선 */
+.perforation {
+  border-top: 2px dashed var(--color-rule);
+}
+
+/* 바탕 종이 결 (레퍼런스 1·3·4의 종이 질감) */
+.grain {
+  background-color: var(--color-counter);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.12 0 0 0 0 0.12 0 0 0 0 0.14 0 0 0 0.07 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* 프린터 슬롯 (레퍼런스 2) */
+.slot {
+  background: linear-gradient(180deg, var(--color-slot-hi) 0%, var(--color-slot) 55%, var(--color-slot-lo) 100%);
+  box-shadow: 0 2px 0 rgb(31 32 35 / 0.15), 0 8px 14px -6px rgb(31 32 35 / 0.35), inset 0 1px 0 rgb(255 255 255 / 0.7);
+}
+.slot-mouth {
+  background: linear-gradient(180deg, #2a2b2f, #55575c);
+}
+
+/* 메인 화이트보드 (D36) — 알루미늄 테두리 + 살짝 광택 있는 흰 판 + 마커 지운 자국 */
+.board {
+  background: linear-gradient(180deg, var(--color-slot-hi), var(--color-slot) 60%, var(--color-slot-lo));
+  box-shadow: 0 10px 18px -10px rgb(31 32 35 / 0.45), inset 0 1px 0 rgb(255 255 255 / 0.7);
+}
+/* 홈 전체 배경 화이트보드 (사용자 요청 2026-11-17: 판 테두리 없이 화면 전체가 보드) */
+.board-page {
+  background:
+    radial-gradient(ellipse 60% 18% at 78% 14%, rgb(110 100 150 / 0.05), transparent 70%),
+    radial-gradient(ellipse 50% 12% at 18% 58%, rgb(31 32 35 / 0.035), transparent 70%),
+    radial-gradient(ellipse 40% 10% at 70% 86%, rgb(31 32 35 / 0.03), transparent 70%),
+    linear-gradient(160deg, #ffffff 0%, var(--color-board) 45%, #ffffff 55%, var(--color-board) 100%);
+}
+.board-surface {
+  background:
+    radial-gradient(ellipse 60% 20% at 75% 12%, rgb(110 100 150 / 0.05), transparent 70%),
+    radial-gradient(ellipse 50% 14% at 20% 55%, rgb(31 32 35 / 0.035), transparent 70%),
+    linear-gradient(160deg, #ffffff 0%, var(--color-board) 45%, #ffffff 55%, var(--color-board) 100%);
+  box-shadow: inset 0 0 0 1px rgb(31 32 35 / 0.08), inset 0 2px 6px rgb(31 32 35 / 0.08);
+}
+@keyframes drop-in {
+  0% { transform: translateY(-60px) rotate(-10deg) scale(1.08); opacity: 0; }
+  70% { transform: translateY(4px) rotate(2deg) scale(1); opacity: 1; }
+  100% { transform: none; }
+}
+.anim-drop { animation: drop-in 650ms cubic-bezier(0.3, 0.7, 0.3, 1) both; }
+@media (prefers-reduced-motion: reduce) {
+  .anim-drop { animation: none; }
+}
+
+/* 휠 피커 */
+.wheel { scrollbar-width: none; }
+.wheel::-webkit-scrollbar { display: none; }
+.wheel-fade {
+  background: linear-gradient(180deg, var(--color-paper) 0%, transparent 32%, transparent 68%, var(--color-paper) 100%);
+}
+
+/* 빨간 끈 (레퍼런스 3·4) */
+.cord {
+  background: repeating-linear-gradient(160deg, var(--color-wine) 0 3px, var(--color-wine-hi) 3px 5px);
+}
+
+/* 영수증 롤러 + 풀려 나오는 종이 (레퍼런스 10) */
+/* 영수증 홀더 (레퍼런스 12): 무광 검은 막대, 양 끝이 아래로 굽고 끝은 둥글다 */
+/* 둥글게 감싸는 홀더: 반원에 가까운 양 끝이 종이 롤을 감싼다 */
+.printer {
+  height: 50px;
+  border: 13px solid #1c1c1e;
+  border-bottom: 0;
+  border-radius: 40px 40px 0 0;
+  animation: printer-buzz 2200ms linear both;
+}
+.printer::before,
+.printer::after {
+  content: '';
+  position: absolute;
+  bottom: -6.5px;
+  width: 13px;
+  height: 13px;
+  border-radius: 9999px;
+  background: #1c1c1e;
+}
+.printer::before { left: -13px; }
+.printer::after { right: -13px; }
+/* 감긴 종이 롤: 위는 홀더 안쪽 그늘, 가운데 빛, 아래로 말려 들어가며 다시 어두워진다 */
+.paper-roll {
+  border-radius: 27px 27px 0 0;
+  background:
+    linear-gradient(90deg, rgb(0 0 0 / 0.14), transparent 12%, transparent 88%, rgb(0 0 0 / 0.14)),
+    linear-gradient(180deg, #b9babd 0%, #e9e9ea 22%, #ffffff 45%, #f3f3f4 72%, #d4d5d8 100%);
+  box-shadow: inset 0 2px 4px rgb(0 0 0 / 0.25);
+}
+/* 감열 프린터처럼 끊어서 밀려 나온다: 밀기 → 멈춤 반복 */
+@keyframes paper-feed {
+  0% { transform: translateY(-100%); }
+  14% { transform: translateY(-82%); }
+  20% { transform: translateY(-82%); }
+  36% { transform: translateY(-58%); }
+  42% { transform: translateY(-58%); }
+  60% { transform: translateY(-30%); }
+  66% { transform: translateY(-30%); }
+  100% { transform: translateY(0); }
+}
+@keyframes printer-buzz {
+  0%, 20%, 42%, 66%, 100% { transform: none; }
+  4%, 24%, 46%, 72% { transform: translateY(0.5px); }
+  8%, 28%, 50%, 80% { transform: translateY(-0.5px); }
+  12%, 32%, 55%, 90% { transform: translateY(0.4px); }
+}
+.roll-paper {
+  filter: drop-shadow(0 8px 12px rgb(31 32 35 / 0.18));
+}
+/* 틈 바로 밑은 그늘, 그 아래는 흰 종이 */
+.roll-paper > div:first-child {
+  background:
+    linear-gradient(180deg, rgb(0 0 0 / 0.18) 0, rgb(0 0 0 / 0.06) 12px, transparent 30px),
+    #ffffff;
+}
+/* 이미지로 저장할 때는 홀더 그늘 없이 흰 종이만 (R8) */
+.roll-paper.exporting > div:first-child { background: #ffffff; }
+/* 영수증 밑단 물결 톱니 (레퍼런스 11) */
+.scallop-bottom {
+  height: 10px;
+  background: radial-gradient(circle at 50% 0, #ffffff 6px, transparent 6.5px) repeat-x;
+  background-size: 13px 10px;
+}
+.roll-grid {
+  background-image:
+    linear-gradient(var(--color-rule) 1px, transparent 1px),
+    linear-gradient(90deg, var(--color-rule) 1px, transparent 1px);
+  background-size: 20% 20%;
+  background-position: -1px -1px;
+}
+@keyframes unroll {
+  from { transform: translateY(-100%); }
+  to { transform: none; }
+}
+.anim-unroll { animation: paper-feed 2200ms cubic-bezier(0.4, 0, 0.6, 1) both; }
+@media (prefers-reduced-motion: reduce) {
+  .anim-unroll,
+  .printer { animation: none; }
+}
+
+/* 마스킹테이프 (레퍼런스 6) */
+.tape {
+  background: var(--color-tape);
+  opacity: 0.85;
+  clip-path: polygon(3% 0, 97% 4%, 100% 50%, 96% 100%, 2% 96%, 0 50%);
+}
+
+/* 왁스 실링 (레퍼런스 3·4·5) */
+.wax {
+  background: radial-gradient(circle at 35% 30%, var(--color-wine-hi), var(--color-wine) 60%, #4e1119 100%);
+  box-shadow: inset 0 0 0 6px rgb(0 0 0 / 0.12), inset 0 2px 3px rgb(255 255 255 / 0.25), 0 4px 8px rgb(31 32 35 / 0.35);
+  border-radius: 48% 52% 50% 50% / 52% 47% 53% 48%;
+}
+
+/* 행동에 대한 반응: 인쇄되어 나오기, 도장 쿵, 끈 흔들림, 왁스 누르기 */
+@keyframes slot-print {
+  0% { transform: translateY(-100%); }
+  20% { transform: translateY(-78%); }
+  24% { transform: translateY(-76%); }
+  50% { transform: translateY(-40%); }
+  54% { transform: translateY(-38%); }
+  100% { transform: translateY(0); }
+}
+@keyframes wax-press {
+  0% { transform: scale(1.6) rotate(-20deg); opacity: 0; }
+  55% { transform: scale(0.92) rotate(-6deg); opacity: 1; }
+  100% { transform: scale(1) rotate(-8deg); opacity: 1; }
+}
+.anim-slot { animation: slot-print 1600ms cubic-bezier(0.3, 0.6, 0.3, 1) both; }
+.anim-wax { animation: wax-press 420ms ease-out 250ms both; }
+@media (prefers-reduced-motion: reduce) {
+  .anim-slot,
+  .anim-wax { animation: none; }
+}
+
+@keyframes stamp-thud {
+  0% { transform: scale(1.5) rotate(var(--rot)); opacity: 0; }
+  60% { transform: scale(0.94) rotate(var(--rot)); opacity: 1; }
+  100% { transform: scale(1) rotate(var(--rot)); opacity: 1; }
+}
+.anim-stamp { animation: stamp-thud 260ms ease-out both; }
+@media (prefers-reduced-motion: reduce) {
+  .anim-stamp { animation: none; }
+}
+
+/* Download arrow — 화살표가 트레이로 떨어지고(0~32%), 트레이가 눌렸다 돌아오고(30~48%), 위에서 다시 내려온다(40~68%) */
+@keyframes dl-arrow {
+  0%, 12% { transform: translateY(0); opacity: 1; }
+  32% { transform: translateY(5px); opacity: 0; }
+  40% { transform: translateY(-9px); opacity: 0; }
+  68% { transform: translateY(0); opacity: 1; }
+  100% { transform: translateY(0); opacity: 1; }
+}
+@keyframes dl-tray {
+  0%, 28% { transform: translateY(0); }
+  36% { transform: translateY(1.4px); }
+  48%, 100% { transform: translateY(0); }
+}
+/* 평소엔 멈춰 있고, 버튼에 마우스를 올리거나 키보드로 포커스하면 움직인다 */
+.dl-trigger:hover .dl-arrow,
+.dl-trigger:focus-visible .dl-arrow { animation: dl-arrow 2.8s cubic-bezier(0.45, 0, 0.25, 1) infinite; }
+.dl-trigger:hover .dl-tray,
+.dl-trigger:focus-visible .dl-tray { animation: dl-tray 2.8s cubic-bezier(0.3, 0.7, 0.4, 1) infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .dl-trigger .dl-arrow,
+  .dl-trigger .dl-tray { animation: none !important; }
+}
+
+/* 공유 아이콘 — 화살표가 위로 날아가고(0~32%), 상자가 눌렸다 돌아오고(20~40%), 아래에서 다시 올라온다(40~68%) */
+@keyframes sh-arrow {
+  0%, 12% { transform: translateY(0); opacity: 1; }
+  32% { transform: translateY(-6px); opacity: 0; }
+  40% { transform: translateY(5px); opacity: 0; }
+  68%, 100% { transform: translateY(0); opacity: 1; }
+}
+@keyframes sh-box {
+  0%, 16% { transform: translateY(0); }
+  24% { transform: translateY(1.2px); }
+  40%, 100% { transform: translateY(0); }
+}
+.dl-trigger:hover .sh-arrow,
+.dl-trigger:focus-visible .sh-arrow { animation: sh-arrow 2.8s cubic-bezier(0.45, 0, 0.25, 1) infinite; }
+.dl-trigger:hover .sh-box,
+.dl-trigger:focus-visible .sh-box { animation: sh-box 2.8s cubic-bezier(0.3, 0.7, 0.4, 1) infinite; }
+@media (prefers-reduced-motion: reduce) {
+  .dl-trigger .sh-arrow,
+  .dl-trigger .sh-box { animation: none !important; }
+}
