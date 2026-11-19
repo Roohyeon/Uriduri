@@ -2,6 +2,7 @@
 export type Route =
   | { name: 'list' }
   | { name: 'desk' }
+  | { name: 'album' }
   | { name: 'login' }
   | { name: 'intro' }
   | { name: 'invite'; token: string }
@@ -17,8 +18,9 @@ export type Route =
 
 const ID = '([A-Za-z0-9_-]{1,64})';
 const table: [RegExp, (m: RegExpExecArray) => Route][] = [
-  [/^\/$/, () => ({ name: 'list' })],
-  [/^\/today$/, () => ({ name: 'desk' })],
+  [/^\/$/, () => ({ name: 'desk' })], // 홈 = 다이어리 (2026-11-19)
+  [/^\/board$/, () => ({ name: 'list' })], // 영수증 보드
+  [/^\/album$/, () => ({ name: 'album' })], // 사진첩
   [/^\/login$/, () => ({ name: 'login' })],
   [/^\/welcome\/intro$/, () => ({ name: 'intro' })],
   [new RegExp(`^/i/${ID}$`), (m) => ({ name: 'invite', token: m[1] })],
@@ -43,8 +45,9 @@ export function parseRoute(pathname: string): Route {
 
 export function routePath(r: Route): string {
   switch (r.name) {
-    case 'list': return '/';
-    case 'desk': return '/today';
+    case 'desk': return '/';
+    case 'list': return '/board';
+    case 'album': return '/album';
     case 'login': return '/login';
     case 'intro': return '/welcome/intro';
     case 'invite': return `/i/${r.token}`;
@@ -64,6 +67,7 @@ export function routePath(r: Route): string {
 export const routeTitle: Record<Route['name'], string> = {
   list: '우리 보드',
   desk: '오늘',
+  album: '사진첩',
   login: '로그인',
   intro: '앱 소개',
   invite: '초대',

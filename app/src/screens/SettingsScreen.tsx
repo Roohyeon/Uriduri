@@ -126,7 +126,7 @@ export function SettingsScreen({
 
   return (
     <>
-      <AppBar title="설정" onBack={() => nav({ name: 'list' })} />
+      <AppBar title="설정" onBack={() => nav({ name: 'desk' })} />
       <main className="space-y-8 px-4 pt-6 pb-12">
         <section className="space-y-3">
           <h2 className="text-base font-bold">전체 백업</h2>

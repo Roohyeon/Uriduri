@@ -120,7 +120,7 @@ export function DetailScreen({
 
   return (
     <>
-      <AppBar title="영수증" onBack={() => nav({ name: 'list' })} />
+      <AppBar title="영수증" onBack={() => nav({ name: 'desk' })} />
       <main className="space-y-6 px-3 pb-12">
         <RollReceipt r={shown} mine={mine} stampingLabel={!mine ? myStamp?.label : undefined} onStampAt={stampAt} animateBy={animate ? ME : undefined} exportRef={paperRef} />
 

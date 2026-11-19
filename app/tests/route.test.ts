@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { parseRoute, routePath, type Route } from '../src/lib/route.ts';
 
 const all: Route[] = [
-  { name: 'list' }, { name: 'desk' }, { name: 'login' }, { name: 'intro' }, { name: 'invite', token: 'abc_DEF-123' }, { name: 'nickname' },
+  { name: 'list' }, { name: 'desk' }, { name: 'album' }, { name: 'login' }, { name: 'intro' }, { name: 'invite', token: 'abc_DEF-123' }, { name: 'nickname' },
   { name: 'anniversary' }, { name: 'noroom' }, { name: 'created' }, { name: 'compose' },
   { name: 'detail', id: 'r1' }, { name: 'edit', id: 'r1' }, { name: 'settings' },
 ];

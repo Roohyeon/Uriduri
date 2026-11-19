@@ -22,6 +22,7 @@ import { ComposeScreen } from './screens/ComposeScreen';
 import { DetailScreen } from './screens/DetailScreen';
 import { SettingsScreen } from './screens/SettingsScreen';
 import { DeskScreen } from './screens/DeskScreen';
+import { AlbumScreen } from './screens/AlbumScreen';
 import { DevPersonSwitch } from './components/DevPersonSwitch';
 import { IntroScreen, SplashScreen } from './screens/IntroScreens';
 
@@ -77,7 +78,7 @@ function guard(route: Route, s: Session): Route | null {
     // 상대가 방을 지웠으면 안내가 있는 방 만들기 화면으로 (R13)
     return { name: pendingAnniversary.get() || s.profile.roomDeletedNotice ? 'noroom' : 'anniversary' };
   }
-  if (['login', 'intro', 'nickname', 'anniversary', 'noroom'].includes(route.name)) return { name: 'list' };
+  if (['login', 'intro', 'nickname', 'anniversary', 'noroom'].includes(route.name)) return { name: 'desk' };
   return null;
 }
 
@@ -219,7 +220,7 @@ export default function App() {
   const afterPublish = async (rec: ReceiptRec) => {
     setDropId(rec.id);
     await loadBoard();
-    navigate({ name: 'list' });
+    navigate({ name: 'desk' });
   };
 
   const me = sess.user?.id ?? '';
@@ -270,8 +271,9 @@ export default function App() {
             onJoinSeen={() => { void backend.markJoinNoticeSeen(); }}
           />
         )}
-        {/* 홈 '오늘의 책상' 시안 (2026-11-19) — 지금은 /today 로만 연다 */}
+        {/* 홈 = 다이어리 (2026-11-19, 주소 /) */}
         {route.name === 'desk' && sess.room && <DeskScreen session={sess} board={board} nav={navigate} />}
+        {route.name === 'album' && sess.room && <AlbumScreen roomId={sess.room.id} receipts={board.receipts} nav={navigate} />}
         {route.name === 'compose' && sess.room && (
           <ComposeScreen me={sess.profile?.nickname ?? ''} anniversary={sess.room.anniversary} nav={navigate} onDone={afterPublish} />
         )}
@@ -290,7 +292,7 @@ export default function App() {
             me={me}
             meName={sess.profile?.nickname ?? ''}
             nav={navigate}
-            onDeleted={async () => { await loadBoard(); navigate({ name: 'list' }, { replace: true }); }}
+            onDeleted={async () => { await loadBoard(); navigate({ name: 'desk' }, { replace: true }); }}
             onStampSaved={() => { void loadBoard(); }}
           />
         )}
@@ -300,7 +302,7 @@ export default function App() {
         {(route.name === 'detail' || route.name === 'edit') && !detail && boardLoading && <div aria-busy="true" />}
         {(route.name === 'notfound' ||
           ((route.name === 'detail' || route.name === 'edit') && !boardLoading && (!detail || (route.name === 'edit' && detailRec?.authorId !== me)))) && (
-          <NotFound onHome={() => navigate({ name: 'list' }, { replace: true })} />
+          <NotFound onHome={() => navigate({ name: 'desk' }, { replace: true })} />
         )}
       </div>
       {/* 입력칸을 가리지 않게 보드·로그인·설정에서만 */}
@@ -315,7 +317,7 @@ function NotFound({ onHome }: { onHome: () => void }) {
     <main className="px-6 pt-20 text-center">
       <h1 className="text-xl font-bold text-balance outline-none">찾을 수 없는 화면이에요</h1>
       <p className="mt-2 text-sm text-fade">주소가 바뀌었거나 지워진 영수증일 수 있어요.</p>
-      <div className="mt-8"><Button onClick={onHome}>우리 보드로 가기</Button></div>
+      <div className="mt-8"><Button onClick={onHome}>홈으로 가기</Button></div>
     </main>
   );
 }

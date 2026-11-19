@@ -1,6 +1,5 @@
 import { useRef, type MouseEvent, type ReactNode, type Ref } from 'react';
 import { MoodFace } from './MoodFace';
-import { fmtDplus } from '../lib/dates';
 import { hashId, photoBg, showDate, type Receipt as R, type StampMark, type StampShape } from '../data';
 
 /* ───────── 장식 요소 (레퍼런스 반영) ───────── */
@@ -206,7 +205,6 @@ function Dash() {
  */
 export function RollReceipt({
   r,
-  mine,
   stampingLabel,
   onStampAt,
   animateBy,
@@ -228,13 +226,6 @@ export function RollReceipt({
     onStampAt(Math.round(((e.clientX - rect.left) / rect.width) * 100), Math.round(((e.clientY - rect.top) / rect.height) * 100));
   };
 
-  const dayOf = r.dplus; // 영수증 날짜 기준 D+
-  const rows: { item: string; value: ReactNode; badge?: string }[] = [
-    { item: 'FROM', value: r.author, badge: mine ? 'MINE' : r.isNew ? 'NEW' : undefined },
-    ...(r.place ? [{ item: 'PLACE', value: r.place }] : []),
-    ...(r.mood ? [{ item: 'MOOD', value: <MoodFace mood={r.mood} size={18} /> }] : []),
-  ];
-
   return (
     <div className="relative mx-auto w-[min(380px,94vw)] pt-2">
       {/* 영수증 홀더 (레퍼런스 12) — 양 끝이 아래로 굽은 굵은 검은 막대, 종이는 그 사이에서 나온다 */}
@@ -253,34 +244,18 @@ export function RollReceipt({
             <header className="text-center uppercase">
               <CoupleMark />
               <h2 lang="en" className="mt-5 text-xl font-semibold tracking-wide">Date Receipt</h2>
-              <div className="mt-5 space-y-1 text-sm">
-                <p><span lang="en">ORDER:</span>#{r.no}</p>
-                <p>{showDate(r.date)}</p>
-                <p>우리두리 — ♥</p>
-              </div>
+              {/* 한 줄로 (사용자 요청 2026-11-19) */}
+              <p className="mt-5 flex items-baseline justify-between gap-2 text-[min(12px,3.1vw)] whitespace-nowrap">
+                <span><span lang="en">ORDER:</span>#{r.no}</span>
+                <span>{showDate(r.date)}</span>
+                <span>우리두리 — ♥</span>
+              </p>
             </header>
 
-            {/* 내용 줄이기 (사용자 요청 2026-11-17): ITEM/DETAIL 머리줄 삭제. 날짜는 위 머리에만 */}
+            {/* 기록 내용은 영수증 구성을 다시 짤 예정: 지금은 사진만 (2026-11-19) */}
             <Dash />
-            <dl className="space-y-3 text-sm">
-                {rows.map((row) => (
-                  <div key={row.item} className="flex items-center gap-2">
-                    <dt lang="en" className="flex shrink-0 items-center gap-2">
-                      {row.item}
-                      {row.badge && (
-                        // MINE·NEW는 보는 사람마다 달라서 저장·공유 이미지에는 넣지 않는다
-                        <span data-no-export className="rounded-sm bg-ink px-1.5 text-[10px] leading-4 font-semibold text-paper">{row.badge}</span>
-                      )}
-                    </dt>
-                    <dd className="ml-auto min-w-0 text-right font-body break-words">{row.value}</dd>
-                  </div>
-                ))}
-            </dl>
-            <Dash />
-
-            <section className="mt-8" aria-label="사진">
-              <h3 lang="en" className="text-xs font-semibold uppercase">Photo</h3>
-              <div className="roll-grid mt-3 border-b-2 border-ink p-3">
+            <section aria-label="사진">
+              <div className="roll-grid border-b-2 border-ink p-3">
                 <div
                   role="img"
                   aria-label={r.photo.label}
@@ -290,26 +265,6 @@ export function RollReceipt({
                   {!r.photo.src && <span aria-hidden="true">{r.photo.emoji}</span>}
                 </div>
               </div>
-              <p lang="en" className="mt-2 text-right text-[10px] text-fade uppercase">with love</p>
-              {/* 사용자가 쓴 한 줄 메모를 사진 바로 아래, 본문 크기 잉크색으로 [02-3] */}
-              <p className="mt-5 font-body text-lg leading-snug font-semibold break-words text-ink">“{r.memo}”</p>
-            </section>
-
-            <Dash />
-            {/* 합계 (레퍼런스 11: TOTAL) */}
-            <section aria-label="합계" className="pt-4">
-              <div className="flex items-baseline justify-between text-xl font-semibold uppercase">
-                <span lang="en">Total:</span>
-                <span>{fmtDplus(dayOf).short}</span>
-              </div>
-              {/* TOTAL이 무엇인지 한국어로 풀어 줌 [02-12] */}
-              <p className="mt-1 text-right font-body text-xs text-fade">{fmtDplus(dayOf).long}</p>
-              <dl lang="en" className="mt-4 text-sm uppercase">
-                <div className="flex justify-between gap-4">
-                  <dt>Stamps</dt>
-                  <dd lang="ko" className="font-body normal-case">{r.stamps.length}개</dd>
-                </div>
-              </dl>
             </section>
 
             <StampLayer r={r} animateBy={animateBy} />

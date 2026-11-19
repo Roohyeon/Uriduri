@@ -7,6 +7,7 @@ import { inviteStatus, newToken, INVITE_TTL_MS } from '../lib/invite';
 import { LIMITS, isValidText, countChars } from '../lib/text';
 import type { StampShape } from '../data';
 import { isIsoDate } from '../lib/dates';
+import { clearDiaryPhotos } from './diaryPhotos';
 import {
   BackendError,
   type Backend,
@@ -127,6 +128,7 @@ export async function resetAllLocal() {
     const req = indexedDB.deleteDatabase('uriduri-local');
     req.onsuccess = req.onerror = req.onblocked = () => resolve();
   });
+  await clearDiaryPhotos(); // 홈 카메라로 찍은 사진
 }
 
 // ───────── 구현 ─────────

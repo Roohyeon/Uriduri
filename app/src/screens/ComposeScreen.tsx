@@ -118,7 +118,7 @@ export function ComposeScreen({
     manual: '직접 고른 날짜예요.',
   }[dateFrom];
 
-  const leave = () => (rec ? nav({ name: 'detail', id: rec.id }, { replace: true }) : nav({ name: 'list' }, { replace: true }));
+  const leave = () => (rec ? nav({ name: 'detail', id: rec.id }, { replace: true }) : nav({ name: 'desk' }, { replace: true }));
   const close = () => (dirty ? setConfirmClose(true) : leave());
 
   const submit = async () => {

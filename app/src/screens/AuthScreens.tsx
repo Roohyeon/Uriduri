@@ -58,7 +58,7 @@ export function LoginScreen({ nav, invite = false, onSignedIn }: { nav: Nav; inv
       if (nick && !(await backend.getProfile())) await backend.saveNickname(nick);
       pendingNickname.clear();
       await onSignedIn(); // 다음 화면은 App이 정한다
-      if (!invite) nav({ name: 'list' }, { replace: true });
+      if (!invite) nav({ name: 'desk' }, { replace: true });
     } catch {
       setErr(true);
     } finally {
@@ -110,7 +110,7 @@ export function InviteScreen({
     backend.peekInvite(token).then((p) => {
       // 이미 멤버면 안내 없이 열기 (R3). 단, 혼자 있는 방을 만든 사람이 자기 링크를 열었으면 알려 준다
       const ownLinkAlone = p.status === 'member' && session.room?.createdBy === session.user?.id && (session.room?.members.length ?? 0) < 2;
-      if (p.status === 'member' && !ownLinkAlone) { pendingInvite.clear(); nav({ name: 'list' }, { replace: true }); }
+      if (p.status === 'member' && !ownLinkAlone) { pendingInvite.clear(); nav({ name: 'desk' }, { replace: true }); }
       else setPeek(p);
     }).catch(() => setPeek({ status: 'not_found' }));
   }, [loggedIn, token, nav, session]);
@@ -129,7 +129,7 @@ export function InviteScreen({
               개발용 안내: 혼자 시험할 때는 왼쪽 아래 “개발용” 버튼 → 사람 바꾸기를 누른 뒤, 이 링크를 다시 열어 주세요.
             </p>
           )}
-          <Button variant="line" onClick={() => { pendingInvite.clear(); nav({ name: 'list' }, { replace: true }); }}>우리 방으로 가기</Button>
+          <Button variant="line" onClick={() => { pendingInvite.clear(); nav({ name: 'desk' }, { replace: true }); }}>우리 방으로 가기</Button>
         </main>
       </>
     );
@@ -145,7 +145,7 @@ export function InviteScreen({
         <AppBar title="초대" />
         <main className="space-y-4 px-6 pt-6">
           <Notice tone="error">{err}</Notice>
-          <Button variant="line" onClick={() => { pendingInvite.clear(); nav({ name: 'list' }, { replace: true }); }}>
+          <Button variant="line" onClick={() => { pendingInvite.clear(); nav({ name: 'desk' }, { replace: true }); }}>
             {session.room ? '우리 방으로 가기' : '처음 화면으로'}
           </Button>
         </main>
@@ -160,7 +160,7 @@ export function InviteScreen({
       if (res.status !== 'ok') { setPeek(res); return; }
       pendingInvite.clear();
       await onJoined();
-      nav({ name: 'list' }, { replace: true });
+      nav({ name: 'desk' }, { replace: true });
     } catch {
       setPeek({ status: 'not_found' });
     } finally {
@@ -404,7 +404,7 @@ export function RoomCreatedScreen({ nav }: { nav: Nav }) {
           <p className="text-sm text-fade">초대 링크는 한 사람만, 24시간 안에 쓸 수 있어요.</p>
         </div>
         <p className="text-sm text-fade">상대가 연결되면 영수증을 발행할 수 있어요.</p>
-        <Button variant="line" onClick={() => nav({ name: 'list' })}>우리 방으로 가기</Button>
+        <Button variant="line" onClick={() => nav({ name: 'desk' })}>우리 방으로 가기</Button>
       </main>
       {toast}
     </>

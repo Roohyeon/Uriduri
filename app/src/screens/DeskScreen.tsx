@@ -1,267 +1,568 @@
-import type { ReactNode } from 'react';
-import { Doodle, MiniMonth, Sticker, TimeChip } from '../components/Stickers';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { MOOD_NAMES, photoBg, type Receipt } from '../data';
 import { useToast } from '../components/ui';
-import { Stamp } from '../components/Receipt';
-import { MoodFace } from '../components/MoodFace';
-import { addDays, dday, nextMilestone, todayIso } from '../lib/dates';
+import { addDays, dday, todayIso, type IsoDate } from '../lib/dates';
+import { DecorBoard, lift, type DecorApi, type WidgetDef } from '../components/diary/DecorBoard';
+import { LineComposer, ListComposer, StickerPicker, StylePicker, TextComposer, WidgetPicker, type WidgetKind } from '../components/diary/sheets';
+import { CameraSheet } from '../components/diary/CameraSheet';
+import { fitPhotos, type ListKind, type Piece } from '../components/diary/pieces';
+import { frameStyleOf, type FrameStyle, type ListStyle, type MemoStyle } from '../components/diary/styles';
+import { savePhoto } from '../services/diaryPhotos';
 import type { BoardData, Nav, Session } from '../App';
 
 /*
- * 홈 '오늘' 시안 v2 (2026-11-19) — 주소 /today
- * 하루를 모눈 노트 위 스티커 콜라주로: 오려 붙인 사진·말풍선·시간 칩·달력·메모·낙서
- * 실제 데이터: 닉네임, D+, 다음 100일 기념일, 최근 영수증(사진·날짜·기분·도장·NEW)
- * 예시 데이터(아직 기능 없음): 말풍선 메모, 오늘의 질문, 버킷리스트 → '예시' 표시
+ * 홈 — 다이어리 (2026-11-19, planning/uriduri/sketches/diary-home-tidy.html), 주소 /
+ * - 위젯: D+ / 최근 사진 / 최근 영수증 — 흰 테두리·그림자로 오려 붙인 느낌
+ * - 아래 탭으로 붙이는 조각: 스티커(그림·글씨) · 카메라(찍은 사진 → 폴라로이드) · 위젯(버킷리스트·메모장·투두리스트·포토프레임)
+ * - 모두 화면 어디든: 꾹 눌러(0.35초) 들고 옮기고, 톡 누르면 크기·기울기·앞으로/뒤로 도구 (components/diary/DecorBoard)
+ * - 사진을 누르면 사진첩(/album)
+ * - ← 밀 때마다 오른쪽에서 한 장씩: 홈 → 우리 달력 → 우리 책장. → 밀면 한 장 돌아온다
+ * 실제 데이터: D+, 쪽수, 최근 영수증(사진·장소·날짜·기분·NEW), 달력(기록·기념일). 책장의 지난 권은 예시
  */
 
-const SAMPLE = {
-  bubble: { text: '보고 싶어 🥺', time: '오전 8:12' },
-  question: '오늘 전화할까?',
-  bucket: [
-    { text: '일본 여행', done: false },
-    { text: '커플 사진 찍기', done: false },
-    { text: '플레이리스트 교환', done: false },
-    { text: '한강 10km 걷기', done: true },
-  ],
-};
+const FOOTER_TOAST = 'calc(var(--footer-h, 88px) + 24px + env(safe-area-inset-bottom))';
+const WEEK = ['일', '월', '화', '수', '목', '금', '토'];
+
+/** 아래 탭에서 연 창 */
+type Open =
+  | { kind: 'stickers' }
+  | { kind: 'text'; editing?: Extract<Piece, { type: 'text' }> }
+  | { kind: 'line'; editing?: Extract<Piece, { type: 'line' }> }
+  | { kind: 'widgets' }
+  /** 위젯 스타일 고르기. change: 편집 화면에서 이미 붙인 위젯의 스타일 바꾸기 */
+  | { kind: 'style'; widget: WidgetKind; change?: Piece }
+  | { kind: 'memo'; style: MemoStyle; editing?: Extract<Piece, { type: 'memo' }> }
+  | { kind: 'list'; list: ListKind; style: ListStyle; editing?: Extract<Piece, { type: 'list' }> }
+  /** frameId·cell: 포토프레임의 그 칸부터 빈 칸을 채운다 (count장까지) */
+  | { kind: 'camera'; frameId?: string; cell?: number; count?: number }
+  | null;
 
 export function DeskScreen({ session, board, nav }: { session: Session; board: BoardData; nav: Nav }) {
-  const [toast, showToast] = useToast();
+  const [toast, showToast] = useToast(5000, FOOTER_TOAST);
   const room = session.room!;
   const me = session.user!.id;
-  const meName = session.profile?.nickname ?? '';
-  const partner = room.members.find((m) => m.id !== me);
-  const partnerName = partner?.nickname ?? '상대';
   const today = todayIso();
   const [, mm, dd] = today.split('-').map(Number);
   const d = dday(room.anniversary, today);
-  const ms = nextMilestone(d);
-  const msDate = addDays(today, ms.left);
-  const latest = board.receipts[0];
-  const newCount = board.receipts.filter((r) => r.isNew).length;
-  const soon = () => showToast('아직 시안이에요. 이 기능은 다음 묶음에서 만들어요.');
+
+  const receipts = board.receipts;
+  const latest = receipts[0];
+  const newCount = receipts.filter((r) => r.isNew).length;
+  // 쪽: 기록이 있는 날 하나가 한 쪽. 오늘은 기록이 없어도 지금 쓰는 쪽
+  const pages = useMemo(() => new Set([...receipts.map((r) => r.date), today].filter((x) => x <= today)).size, [receipts, today]);
+  // 한 줄 쓰기에서 골라 올 수 있는 최근 영수증 한 줄 (같은 말은 한 번만)
+  const suggestions = useMemo(() => [...new Set(receipts.map((r) => r.memo.trim()).filter(Boolean))].slice(0, 5), [receipts]);
+
+  const [panel, setPanel] = useState<Panel>(null);
+  const decorApi = useRef<DecorApi | null>(null);
+  const [open, setOpen] = useState<Open>(null);
+  const close = useCallback(() => setOpen(null), []);
+
+  // 위젯: 꾹 눌러 들고 어디든 옮기고, 톡 누르면 도구 (사진은 톡 = 사진첩, 영수증은 톡 = 영수증 보기)
+  const widgets: WidgetDef[] = [
+    {
+      id: 'dday',
+      name: 'D-day',
+      className: 'w-dday band',
+      home: [0.27, 0.1],
+      body: (
+        <>
+          <span className="band__dday" aria-hidden="true">D+{d}</span>
+          <span className="band__heart" aria-hidden="true">♥</span>
+        </>
+      ),
+    },
+    {
+      id: 'photo',
+      name: '사진',
+      className: 'w-photo',
+      home: [0.36, 0.32],
+      body: (
+        <div className="w-slot">
+          {latest ? (
+            <PhotoCard r={latest} newCount={newCount} onOpen={() => nav({ name: 'album' })} />
+          ) : (
+            <button type="button" className="photo-empty" onClick={() => setOpen({ kind: 'camera' })}>
+              <CameraIcon size={28} />
+              오늘 첫 사진 찍기
+            </button>
+          )}
+        </div>
+      ),
+    },
+    {
+      id: 'receipt',
+      name: '영수증',
+      className: 'w-receipt',
+      home: [0.76, 0.36],
+      body: (
+        <div className="w-slot">
+          {latest ? (
+            <MiniReceipt r={latest} onOpen={() => nav({ name: 'detail', id: latest.id })} />
+          ) : (
+            <p className="slot-empty">영수증이 여기에 붙어요</p>
+          )}
+        </div>
+      ),
+    },
+  ];
+
+  const editPiece = (p: Piece) => {
+    if (p.type === 'text') setOpen({ kind: 'text', editing: p });
+    else if (p.type === 'line') setOpen({ kind: 'line', editing: p });
+    else if (p.type === 'memo') setOpen({ kind: 'memo', style: p.style, editing: p });
+    else if (p.type === 'list') setOpen({ kind: 'list', list: p.kind, style: p.style, editing: p });
+  };
+
+  /** 포토프레임의 빈 칸 → 카메라 (그 칸부터 남은 빈 칸 수만큼 찍을 수 있다) */
+  const fillFrame = (frameId: string, cell: number) => {
+    const f = decorApi.current?.getPiece(frameId);
+    if (!f || f.type !== 'frame') return;
+    const count = Math.max(1, f.photos.slice(cell).filter((x) => !x).length);
+    setOpen({ kind: 'camera', frameId, cell, count });
+  };
+
+  /** 스타일을 골랐을 때: 새로 붙이기(쓰기 창·카메라로) 또는 붙인 위젯의 스타일 바꾸기 */
+  const pickStyle = (widget: WidgetKind, style: string, change?: Piece) => {
+    const api = decorApi.current;
+    if (!api) return;
+    if (change) {
+      if (change.type === 'frame') api.update(change.id, { style: style as FrameStyle, photos: fitPhotos(change.photos, style as FrameStyle) });
+      else if (change.type === 'memo') api.update(change.id, { style: style as MemoStyle });
+      else if (change.type === 'list') api.update(change.id, { style: style as ListStyle });
+      close();
+      return;
+    }
+    if (widget === 'memo') setOpen({ kind: 'memo', style: style as MemoStyle });
+    else if (widget === 'frame') {
+      // 빈 액자를 먼저 붙이고 바로 카메라 (닫아도 액자는 남고, 빈 칸을 누르면 다시 찍기)
+      const cells = frameStyleOf(style).cells;
+      const frameId = api.add({ type: 'frame', style: style as FrameStyle, photos: Array(cells).fill(null), date: today, dplus: d });
+      setOpen({ kind: 'camera', frameId, cell: 0, count: cells });
+    } else setOpen({ kind: 'list', list: widget, style: style as ListStyle });
+  };
 
   return (
-    <>
-      <div aria-hidden="true" className="grid-paper pointer-events-none fixed inset-0 -z-10" />
-
-      <header className="relative px-4 pt-5 text-center">
-        <h1 tabIndex={-1} className="sticker-text text-[34px] leading-none font-black tracking-tight outline-none">
-          {mm}월 {dd}일
+    <DecorBoard
+      roomId={room.id}
+      me={me}
+      covered={panel !== null}
+      ready={board.status !== 'loading'}
+      widgets={widgets}
+      api={decorApi}
+      onEditPiece={editPiece}
+      onOpenPhoto={() => nav({ name: 'album' })}
+      onFillFrame={fillFrame}
+      onChangeStyle={(p) => setOpen({ kind: 'style', widget: p.type === 'list' ? p.kind : (p.type as 'memo' | 'frame'), change: p })}
+    >
+      <header className="diary-header">
+        <h1 tabIndex={-1} className="sr-only">
+          {mm}월 {dd}일 다이어리, 사귄 지 {d}일
         </h1>
-        <p className="sticker-flat mx-auto mt-3 inline-flex items-center gap-1.5 rounded-full bg-frame px-3 py-1 text-sm font-semibold">
-          {meName} <span aria-label="와" className="text-seal">♥</span> {partnerName}
-          <span className="font-receipt font-bold"><span className="sr-only">사귄 지 {d}일</span><span aria-hidden="true">D+{d}</span></span>
-        </p>
-        <button
-          type="button"
-          onClick={() => nav({ name: 'settings' })}
-          aria-label="설정"
-          className="sticker-flat absolute top-4 right-4 grid size-11 place-items-center rounded-full bg-frame text-ink"
-        >
-          <Icon name="settings" size={20} />
+        <button type="button" className="icon-btn" aria-label="설정" onClick={() => nav({ name: 'settings' })}>
+          <SettingsIcon />
         </button>
       </header>
 
-      <main className="relative mx-auto h-[880px] w-full overflow-hidden pb-28">
-        {/* 낙서 */}
-        <Doodle kind="sparkle" style={{ left: '45%', top: 196 }} />
-        <Doodle kind="heart" style={{ left: '4%', top: 470 }} />
-        <Doodle kind="lines" style={{ right: '8%', top: 210 }} />
-        <Doodle kind="arrow" style={{ right: '30%', top: 540 }} />
-
-        {/* 1. 달력 스티커 — 오늘 동그라미, 기념일 하트 */}
-        <Sticker left="-3%" top={14} width="max(47%, 160px)" tilt={-6} delay={0}>
-          <button type="button" onClick={soon} className="sticker block w-full rounded-lg bg-frame px-3 pt-2 pb-3 text-left" aria-label={`일정 보기, 오늘 ${mm}월 ${dd}일`}>
-            <MiniMonth today={today} mark={msDate} />
-          </button>
-        </Sticker>
-
-        {/* 2. 상대 말풍선 + 시간 칩 (예시) */}
-        <Sticker right="5%" top={24} width="44%" tilt={4} delay={80}>
-          <button type="button" onClick={soon} className="block w-full text-left">
-            <span className="bubble-tail sticker-flat relative block rounded-[22px] bg-frame px-4 py-3 text-lg font-bold">
-              {SAMPLE.bubble.text}
-            </span>
-            <TimeChip who={partnerName} tone="blush" className="mt-6 ml-3">{SAMPLE.bubble.time}</TimeChip>
-            <SampleTag className="mt-1 ml-3" />
-          </button>
-        </Sticker>
-
-        {/* 3. 최근 영수증 폴라로이드 (실제) */}
-        <Sticker left="5%" top={232} width="54%" tilt={-4} delay={160}>
-          {latest ? (
-            <Polaroid r={latest} newCount={newCount} onOpen={() => nav({ name: 'detail', id: latest.id })} />
-          ) : (
-            <button
-              type="button"
-              onClick={() => nav({ name: 'compose' })}
-              className="sticker grid aspect-[4/5] w-full place-items-center rounded-sm bg-frame p-4 text-center"
-            >
-              <span>
-                <span aria-hidden="true" className="block text-[30px]">📸</span>
-                <span className="mt-2 block font-bold">오늘 첫 영수증 붙이기</span>
-              </span>
-            </button>
-          )}
-        </Sticker>
-
-        {/* 4. 기분 스티커 (최근 영수증 기분) */}
-        {latest?.mood && (
-          <Sticker right="8%" top={250} width={104} tilt={10} delay={240}>
-            <div className="text-center">
-              <span
-                role="img"
-                aria-label={`${latest.author}의 기분: ${MOOD_NAMES[latest.mood]}`}
-                className="sticker mx-auto grid size-[92px] place-items-center rounded-full bg-sun text-ink"
-              >
-                <MoodFace mood={latest.mood} size={60} label={false} />
-              </span>
-              <TimeChip who={latest.author} tone="sky" className="-mt-3">{MOOD_NAMES[latest.mood]}</TimeChip>
-            </div>
-          </Sticker>
-        )}
-
-        {/* 5. 기념일 입장권 (실제) */}
-        <Sticker right="2%" top={452} width="max(38%, 150px)" tilt={6} delay={320}>
-          <div className="sticker flex items-stretch rounded-md bg-blush" role="group" aria-label={`${ms.day}일 기념일까지 ${ms.left}일`}>
-            <div className="flex-1 px-3 py-2">
-              <p className="font-receipt text-[9px] tracking-wider whitespace-nowrap text-ink/70">ADMIT TWO</p>
-              <p className="text-sm leading-tight font-black">{ms.left === 0 ? `오늘 ${ms.day}일!` : `${ms.day}일`}</p>
-            </div>
-            <div aria-hidden="true" className="my-1.5 border-l-2 border-dashed border-ink/30" />
-            <p className="grid place-items-center px-2 font-receipt text-base font-bold whitespace-nowrap">{ms.left === 0 ? 'D-DAY' : `D-${ms.left}`}</p>
-          </div>
-        </Sticker>
-
-        {/* 6. 오늘의 질문 투표 카드 (예시) */}
-        <Sticker left="6%" top={560} width="58%" tilt={-3} delay={400}>
-          <div className="sticker rounded-2xl bg-clip-sky p-1">
-            <div className="rounded-xl bg-frame px-3 pt-3 pb-2 text-center">
-              <p className="font-bold">{SAMPLE.question}</p>
-              <div className="mt-2 flex justify-center gap-3">
-                <button type="button" onClick={soon} aria-label="좋아" className="sticker-flat grid size-11 place-items-center rounded-full bg-sun text-xl">👍</button>
-                <button type="button" onClick={soon} aria-label="싫어" className="sticker-flat grid size-11 place-items-center rounded-full bg-frame text-xl">👎</button>
+      <SidePanels panel={panel} setPanel={setPanel}>
+        {{
+          calendar: (
+            <MonthCalendar
+              today={today}
+              anniversary={room.anniversary}
+              receipts={receipts}
+              me={me}
+              onOpen={(id) => nav({ name: 'detail', id })}
+            />
+          ),
+          shelf: (
+            <>
+              <div className="bookshelf__shelf" role="img" aria-label="책장 예시: 2026 봄, 제주 여행, 300~400일, 지금 쓰는 중">
+                <span className="book book--blue" aria-hidden="true">2026 봄</span>
+                <span className="book book--pink" aria-hidden="true">제주 여행</span>
+                <span className="book book--yellow" aria-hidden="true">300~400일</span>
+                <span className="book book--current" aria-hidden="true">지금 쓰는 중</span>
               </div>
-              <p className="mt-2 font-receipt text-[11px] text-fade">{partnerName} 답함 · 내가 답하면 열려요</p>
-            </div>
-          </div>
-          <SampleTag className="mt-1 ml-2" />
-        </Sticker>
+              <p className="bookshelf__count">
+                지금 쓰는 권 · {pages}쪽 · 영수증 {receipts.length}장 <span className="sample-tag">지난 권은 예시</span>
+              </p>
+              <div className="shelf-links">
+                <button type="button" className="shelf-link" onClick={() => nav({ name: 'album' })}>
+                  사진첩 ›
+                </button>
+                <button type="button" className="shelf-link" onClick={() => nav({ name: 'list' })}>
+                  영수증 보드 ›
+                </button>
+              </div>
+            </>
+          ),
+        }}
+      </SidePanels>
 
-        {/* 7. 버킷리스트 메모 (예시) */}
-        <Sticker right="-4%" top={590} width="44%" tilt={7} delay={480}>
-          <div className="sticker-flat bg-clip-butter px-4 pt-3 pb-4">
-            <p className="text-xs font-bold text-[#a07a00]">Memo</p>
-            <p className="font-black">우리 버킷리스트</p>
-            <ul className="mt-1 space-y-1 text-sm">
-              {SAMPLE.bucket.map((b) => (
-                <li key={b.text} className="flex items-center gap-1.5">
-                  <span aria-hidden="true" className={`grid size-4 shrink-0 place-items-center rounded-[3px] border ${b.done ? 'border-transparent bg-[#2fb36b] text-frame' : 'border-edge bg-frame'}`}>
-                    {b.done && <Icon name="check" size={12} />}
-                  </span>
-                  <span className={b.done ? 'line-through decoration-ink/40' : ''}>{b.text}</span>
-                  {b.done && <span className="sr-only">(완료)</span>}
-                </li>
-              ))}
-            </ul>
-            <SampleTag className="mt-2" />
-          </div>
-        </Sticker>
-      </main>
+      <footer className="diary-footer">
+        <nav aria-label="붙이기 도구">
+          <ul className="icon-nav">
+            <li>
+              <button type="button" className="icon-nav__btn" aria-label="스티커 붙이기" title="스티커" onClick={() => setOpen({ kind: 'stickers' })}>
+                <StickerIcon />
+              </button>
+            </li>
+            <li>
+              <button type="button" className="icon-nav__btn icon-nav__btn--camera" aria-label="사진 찍어 붙이기" title="카메라" onClick={() => setOpen({ kind: 'camera' })}>
+                <CameraIcon size={28} />
+              </button>
+            </li>
+            <li>
+              <button type="button" className="icon-nav__btn" aria-label="위젯 붙이기" title="위젯" onClick={() => setOpen({ kind: 'widgets' })}>
+                <WidgetIcon />
+              </button>
+            </li>
+          </ul>
+        </nav>
+      </footer>
 
-      <TabBar current="desk" nav={nav} onSoon={soon} />
+      {open?.kind === 'stickers' && (
+        <StickerPicker
+          onClose={close}
+          hiddenWidgets={widgets.filter((w) => decorApi.current?.hiddenWidgets().includes(w.id))}
+          onRestore={(id) => { decorApi.current?.showWidget(id); close(); }}
+          onPick={(art) => { decorApi.current?.add({ type: 'art', art }); close(); }}
+          onWrite={() => setOpen({ kind: 'text' })}
+        />
+      )}
+      {open?.kind === 'text' && (
+        <TextComposer
+          initial={open.editing}
+          onClose={close}
+          onDone={(t) => {
+            if (open.editing) decorApi.current?.update(open.editing.id, t);
+            else decorApi.current?.add({ type: 'text', ...t });
+            close();
+          }}
+        />
+      )}
+      {open?.kind === 'line' && (
+        <LineComposer
+          initial={open.editing?.text}
+          suggestions={suggestions}
+          onClose={close}
+          onDone={(text) => {
+            if (open.editing) decorApi.current?.update(open.editing.id, { text });
+            else decorApi.current?.add({ type: 'line', text, by: me });
+            close();
+          }}
+        />
+      )}
+      {open?.kind === 'widgets' && (
+        <WidgetPicker onClose={close} onPick={(k) => setOpen({ kind: 'style', widget: k })} />
+      )}
+      {open?.kind === 'style' && (
+        <StylePicker
+          kind={open.widget}
+          current={open.change && 'style' in open.change ? (open.change.style as string) : undefined}
+          onClose={close}
+          onPick={(st) => pickStyle(open.widget, st, open.change)}
+        />
+      )}
+      {open?.kind === 'memo' && (
+        <LineComposer
+          memo
+          initial={open.editing?.text}
+          suggestions={suggestions}
+          onClose={close}
+          onDone={(text) => {
+            if (open.editing) decorApi.current?.update(open.editing.id, { text });
+            else decorApi.current?.add({ type: 'memo', text, style: open.style });
+            close();
+          }}
+        />
+      )}
+      {open?.kind === 'list' && (
+        <ListComposer
+          kind={open.list}
+          initial={open.editing?.items}
+          onClose={close}
+          onDone={(items) => {
+            if (open.editing) decorApi.current?.update(open.editing.id, { items });
+            else decorApi.current?.add({ type: 'list', kind: open.list, items, style: open.style });
+            close();
+          }}
+        />
+      )}
+      {open?.kind === 'camera' && (
+        <CameraSheet
+          count={open.count ?? 1}
+          onClose={close}
+          onDone={async (shots) => {
+            const saved = [];
+            for (const sh of shots) saved.push(await savePhoto(room.id, sh.blob, sh.w, sh.h));
+            const f = open.frameId ? decorApi.current?.getPiece(open.frameId) : undefined;
+            if (f && f.type === 'frame') {
+              // 고른 칸부터 빈 칸을 차례로 채운다
+              const photos = [...f.photos];
+              let k = 0;
+              for (let i = open.cell ?? 0; i < photos.length && k < saved.length; i++) if (!photos[i]) photos[i] = saved[k++].id;
+              decorApi.current?.update(f.id, { photos });
+              showToast(`액자에 사진 ${k}장을 넣었어요.`);
+            } else {
+              decorApi.current?.add({ type: 'photo', photoId: saved[0].id, date: saved[0].date });
+              showToast('사진을 붙였어요. 사진을 누르면 사진첩에서 볼 수 있어요.');
+            }
+            close();
+          }}
+        />
+      )}
       {toast}
-    </>
+    </DecorBoard>
   );
 }
 
-function SampleTag({ className = '' }: { className?: string }) {
-  return <span className={`inline-block rounded-sm border border-dashed border-edge bg-frame/80 px-1.5 text-[11px] text-fade ${className}`}>예시</span>;
-}
+const shortDate = (iso: IsoDate) => {
+  const [, m, d] = iso.split('-').map(Number);
+  return `${m}.${d}`;
+};
 
-/** 최근 영수증 → 폴라로이드 스티커 */
-function Polaroid({ r, newCount, onOpen }: { r: Receipt; newCount: number; onOpen: () => void }) {
-  const stamp = r.stamps[0];
-  const [, m, d] = r.date.split('-').map(Number);
+/* ───────────────── 사진·영수증 위젯 ───────────────── */
+
+function PhotoCard({ r, newCount, onOpen }: { r: Receipt; newCount: number; onOpen: () => void }) {
   return (
-    <button type="button" onClick={onOpen} className="relative block w-full text-left" aria-label={`최근 영수증 열기: ${r.memo}`}>
-      <span className="sticker-flat block bg-frame p-2.5 pb-3">
-        <span role="img" aria-label={r.photo.label} className="block aspect-square w-full" style={{ background: photoBg(r.photo) }} />
-        <span className="mt-2 line-clamp-2 block text-sm leading-snug font-semibold">“{r.memo}”</span>
+    <button type="button" className="photo-card" onClick={onOpen} aria-label={`최근 사진, 사진첩에서 보기: ${r.photo.label}`}>
+      {newCount > 0 && <span className="photo-card__new">NEW {newCount}</span>}
+      <span className="photo-card__frame">
+        <span className="photo-card__img" style={{ background: r.photo.src ? photoBg(r.photo) : undefined }} />
       </span>
-      <TimeChip who={r.author} tone="blush" className="absolute -bottom-4 left-4 -rotate-[4deg]">{m}.{d}</TimeChip>
-      {newCount > 0 && (
-        <span className="sticker-flat absolute -top-3 -left-2 -rotate-6 rounded-full bg-seal px-2.5 py-0.5 text-xs font-black text-paper">
-          NEW {newCount}
-        </span>
-      )}
-      {stamp && (
-        <span className="pointer-events-none absolute top-1/3 -right-3">
-          <Stamp mark={stamp} size={62} />
-        </span>
-      )}
+      <span className="photo-card__cap" aria-hidden="true">{r.place || (r.mood ? MOOD_NAMES[r.mood] : shortDate(r.date))}</span>
     </button>
   );
 }
 
-type Tab = 'desk' | 'plan' | 'letter' | 'list';
-const TABS: { id: Tab; label: string; icon: IconName }[] = [
-  { id: 'desk', label: '오늘', icon: 'home' },
-  { id: 'plan', label: '일정', icon: 'calendar' },
-  { id: 'letter', label: '쪽지', icon: 'mail' },
-  { id: 'list', label: '기록', icon: 'receipt' },
-];
-
-/** 떠 있는 아래 탭 (시안). 일정·쪽지는 아직 없어서 안내만 띄운다 */
-export function TabBar({ current, nav, onSoon }: { current: Tab; nav: Nav; onSoon: () => void }) {
+function MiniReceipt({ r, onOpen }: { r: Receipt; onOpen: () => void }) {
+  const [y, m, d] = r.date.split('-');
   return (
-    <nav
-      aria-label="주요 화면"
-      className="fixed inset-x-0 z-30 mx-auto max-w-[390px] px-4"
-      style={{ bottom: 'calc(0.75rem + env(safe-area-inset-bottom))' }}
-    >
-      <ul className="sticker-flat grid grid-cols-4 rounded-full bg-frame p-1">
-        {TABS.map((t) => {
-          const on = t.id === current;
-          const go = () => {
-            if (on) return;
-            if (t.id === 'list') nav({ name: 'list' });
-            else if (t.id === 'desk') nav({ name: 'desk' });
-            else onSoon();
-          };
-          return (
-            <li key={t.id}>
-              <button
-                type="button"
-                onClick={go}
-                aria-current={on ? 'page' : undefined}
-                className={`flex min-h-12 w-full flex-col items-center justify-center rounded-full text-[11px] ${on ? 'bg-ink font-bold text-paper' : 'text-fade hover:text-ink'}`}
-              >
-                <Icon name={t.icon} size={20} />
-                {t.label}
-              </button>
-            </li>
-          );
-        })}
-      </ul>
-    </nav>
+    <button type="button" className="receipt" onClick={onOpen} aria-label={`영수증 No.${r.no} 열기`}>
+      <span className="receipt__paper" aria-hidden="true">
+        <span className="receipt__title">[ 영수증 ]</span>
+        <span className="receipt__rule" />
+        <span>{r.place || '우리 둘'}</span>
+        <span>{y}.{m}.{d}</span>
+        <span className="receipt__row" style={{ marginTop: 3 }}><span>No.</span><span>{r.no}</span></span>
+        <span className="receipt__row"><span>쓴 사람</span><span>{r.author}</span></span>
+        {r.mood && <span className="receipt__row"><span>기분</span><span>{MOOD_NAMES[r.mood]}</span></span>}
+        <span className="receipt__rule" />
+        <span className="receipt__row receipt__total"><span>TOTAL</span><span>{r.dplus >= 1 ? `D+${r.dplus}` : `D-${1 - r.dplus}`}</span></span>
+      </span>
+    </button>
   );
 }
 
-type IconName = 'home' | 'calendar' | 'mail' | 'receipt' | 'settings' | 'check';
-const ICONS: Record<IconName, ReactNode> = {
-  home: <><path d="M4 11l8-7 8 7" /><path d="M6 10v10h12V10" /><path d="M10 20v-5h4v5" /></>,
-  calendar: <><rect x="4" y="5" width="16" height="15" rx="1" /><path d="M4 10h16M9 3v4M15 3v4" /></>,
-  mail: <><rect x="3" y="6" width="18" height="13" rx="1" /><path d="M3 7l9 6 9-6" /></>,
-  receipt: <><path d="M6 3h12v18l-2-1.5-2 1.5-2-1.5-2 1.5-2-1.5-2 1.5z" /><path d="M9 8h6M9 12h6M9 16h3" /></>,
-  settings: <><circle cx="12" cy="12" r="3" /><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1" /></>,
-  check: <path d="M5 12l5 5 9-10" strokeWidth="3" />,
-};
-function Icon({ name, size = 22 }: { name: IconName; size?: number }) {
+/* ───────────────── 옆 화면: 홈 → 달력 → 책장 (모두 오른쪽에서) ───────────────── */
+
+type Panel = 'calendar' | 'shelf' | null;
+// 왼쪽으로 밀 때마다 한 장씩 넘어가고, 오른쪽으로 밀면 한 장 돌아온다
+const ORDER: Panel[] = [null, 'calendar', 'shelf'];
+const step = (cur: Panel, by: number): Panel => ORDER[Math.max(0, Math.min(ORDER.length - 1, ORDER.indexOf(cur) + by))];
+
+function SidePanels({ panel, setPanel, children }: { panel: Panel; setPanel: (p: Panel) => void; children: { calendar: ReactNode; shelf: ReactNode } }) {
+  const closeRefs = { calendar: useRef<HTMLButtonElement>(null), shelf: useRef<HTMLButtonElement>(null) };
+  const tabRefs = { calendar: useRef<HTMLButtonElement>(null), shelf: useRef<HTMLButtonElement>(null) };
+  const panelRef = useRef(panel);
+  const prev = useRef<Panel>(null);
+
+  // 앞으로 가면 새 화면의 돌아가기 버튼으로, 돌아오면 넘어갈 때 누른 손잡이로 초점
+  useEffect(() => {
+    panelRef.current = panel;
+    const back = ORDER.indexOf(panel) < ORDER.indexOf(prev.current);
+    if (back && prev.current) tabRefs[prev.current].current?.focus({ preventScroll: true });
+    else if (panel) closeRefs[panel].current?.focus({ preventScroll: true });
+    prev.current = panel;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [panel]);
+
+  // ← 밀면 다음 장(홈 → 달력 → 책장), → 밀면 이전 장. Esc도 한 장 돌아간다
+  useEffect(() => {
+    let swipe: { id: number; x: number; y: number } | null = null;
+    const down = (e: PointerEvent) => {
+      if ((e.target as Element).closest?.('.decor-tools, .icon-nav, .mcal__day, [role="dialog"]')) return;
+      swipe = { id: e.pointerId, x: e.clientX, y: e.clientY };
+    };
+    const up = (e: PointerEvent) => {
+      if (!swipe || e.pointerId !== swipe.id) return;
+      const dx = e.clientX - swipe.x, dy = e.clientY - swipe.y;
+      swipe = null;
+      if (lift.on) return;
+      if (Math.abs(dx) < 60 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+      const next = step(panelRef.current, dx < 0 ? 1 : -1);
+      if (next !== panelRef.current) setPanel(next);
+    };
+    const cancel = () => { swipe = null; };
+    const esc = (e: globalThis.KeyboardEvent) => { if (e.key === 'Escape' && panelRef.current) setPanel(step(panelRef.current, -1)); };
+    document.addEventListener('pointerdown', down);
+    document.addEventListener('pointerup', up);
+    document.addEventListener('pointercancel', cancel);
+    document.addEventListener('keydown', esc);
+    return () => {
+      document.removeEventListener('pointerdown', down);
+      document.removeEventListener('pointerup', up);
+      document.removeEventListener('pointercancel', cancel);
+      document.removeEventListener('keydown', esc);
+    };
+  }, [setPanel]);
+
+  const pages = [
+    // tabOn: 손잡이가 보이는 때, back: 돌아가기 버튼
+    { key: 'calendar' as const, tab: '달력', title: '우리 달력', tabOn: panel === null, back: { label: '‹ 다이어리', to: null as Panel } },
+    { key: 'shelf' as const, tab: '책장', title: '우리 책장', tabOn: panel === 'calendar', back: { label: '‹ 달력', to: 'calendar' as Panel } },
+  ];
+  const at = ORDER.indexOf(panel);
   return (
-    <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      {ICONS[name]}
+    <>
+      {pages.map((s) => (
+        <div key={s.key}>
+          <button
+            ref={tabRefs[s.key]}
+            type="button"
+            className={`side-tab side-tab--right ${s.key === 'shelf' ? 'side-tab--over' : ''}`}
+            aria-controls={`${s.key}-panel`}
+            aria-expanded={panel === s.key}
+            hidden={!s.tabOn}
+            onClick={() => setPanel(s.key)}
+          >
+            {s.tab}
+          </button>
+          <aside
+            id={`${s.key}-panel`}
+            // 책장이 열려도 달력은 밑에 깔려 있어서, 돌아오면 달력이 보인다
+            className={`side-panel side-panel--right ${at >= ORDER.indexOf(s.key) ? 'is-open' : ''}`}
+            aria-labelledby={`${s.key}-title`}
+          >
+            <div className="side-panel__head">
+              <h2 id={`${s.key}-title`} className="section-title">{s.title}</h2>
+              <button ref={closeRefs[s.key]} type="button" className="side-close" aria-label={`${s.back.to ? '달력으로' : '다이어리로'} 돌아가기`} onClick={() => setPanel(s.back.to)}>
+                {s.back.label}
+              </button>
+            </div>
+            {children[s.key]}
+          </aside>
+        </div>
+      ))}
+    </>
+  );
+}
+
+/** 우리 달력 — 오늘 동그라미, 기록한 날은 사진 조각(상대 기록은 하늘색), 100일 단위·해마다 기념일은 하트 */
+function MonthCalendar({ today, anniversary, receipts, me, onOpen }: { today: IsoDate; anniversary: IsoDate; receipts: Receipt[]; me: string; onOpen: (id: string) => void }) {
+  const [offset, setOffset] = useState(0);
+  const [ty, tm] = today.split('-').map(Number);
+  const first = new Date(Date.UTC(ty, tm - 1 + offset, 1));
+  const y = first.getUTCFullYear(), m = first.getUTCMonth() + 1;
+  const lead = first.getUTCDay();
+  const days = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  const byDate = useMemo(() => {
+    const map = new Map<IsoDate, Receipt[]>();
+    // 날짜마다 가장 먼저 붙인 영수증이 대표 (목록은 최신순)
+    for (const r of [...receipts].reverse()) map.set(r.date, [...(map.get(r.date) ?? []), r]);
+    return map;
+  }, [receipts]);
+  const [, am, ad] = anniversary.split('-').map(Number);
+  const firstIso = `${y}-${String(m).padStart(2, '0')}-01`;
+
+  const cells: ReactNode[] = [];
+  for (let i = 0; i < lead; i++) cells.push(<span key={`l${i}`} className="mcal__day mcal__day--empty" aria-hidden="true" />);
+  for (let day = 1; day <= days; day++) {
+    const iso = addDays(firstIso, day - 1);
+    const n = dday(anniversary, iso);
+    const anniv = n > 1 && (n % 100 === 0 || (m === am && day === ad));
+    const recs = byDate.get(iso);
+    const isToday = iso === today;
+    const parts = [`${m}월 ${day}일`, isToday && '오늘', recs && `기록 ${recs.length}개`, anniv && (n % 100 === 0 ? `${n}일 기념일` : '기념일')].filter(Boolean).join(' · ');
+    const cls = `mcal__day ${isToday ? 'mcal__day--today' : ''} ${anniv ? 'mcal__day--anniv' : ''}`;
+    const inner = (
+      <>
+        <span className="mcal__num" aria-hidden="true">{day}</span>
+        {recs && (
+          <span
+            aria-hidden="true"
+            className={`mcal__thumb ${recs[0].authorId === me ? '' : 'mcal__thumb--partner'}`}
+            style={recs[0].photo.src ? { backgroundImage: `url("${recs[0].photo.src}")` } : undefined}
+          />
+        )}
+        {anniv && <i className="mcal__heart" aria-hidden="true">♥</i>}
+      </>
+    );
+    cells.push(
+      recs ? (
+        <button key={iso} type="button" className={cls} aria-label={`${parts}, 열기`} aria-current={isToday ? 'date' : undefined} onClick={() => onOpen(recs[recs.length - 1].id)}>
+          {inner}
+        </button>
+      ) : (
+        <span key={iso} role="img" className={cls} aria-label={parts} aria-current={isToday ? 'date' : undefined}>
+          {inner}
+        </span>
+      ),
+    );
+  }
+
+  return (
+    <section className="mcal" aria-labelledby="month-title">
+      <div className="mcal__band">
+        <button type="button" className="mcal__nav" aria-label="지난달" onClick={() => setOffset((o) => o - 1)}>‹</button>
+        <h3 id="month-title" className="mcal__title" aria-live="polite">
+          <span className="mcal__month">{m}월</span> <span className="mcal__year">{y}</span>
+        </h3>
+        <button type="button" className="mcal__nav" aria-label="다음달" onClick={() => setOffset((o) => o + 1)}>›</button>
+      </div>
+      <div className="mcal__body">
+        <div className="mcal__weekdays" aria-hidden="true">
+          {WEEK.map((w, i) => <span key={w} className={i === 0 ? 'sun' : i === 6 ? 'sat' : ''}>{w}</span>)}
+        </div>
+        <div className="mcal__grid">{cells}</div>
+        <p className="mcal__legend" aria-hidden="true">
+          <span><span className="mcal__thumb mcal__thumb--legend" />내 기록</span>
+          <span><span className="mcal__thumb mcal__thumb--legend mcal__thumb--partner" />상대 기록</span>
+          <span><i className="mcal__heart">♥</i>기념일</span>
+        </p>
+      </div>
+    </section>
+  );
+}
+
+/* ───────────────── 아이콘 ───────────────── */
+
+function SettingsIcon() {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  );
+}
+
+function StickerIcon() {
+  return (
+    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M21 12a9 9 0 1 1-9-9" /><path d="M12 3v5a4 4 0 0 0 4 4h5z" fill="#f6e39b" />
+      <circle cx="7.6" cy="12.6" r="1" fill="currentColor" stroke="none" /><circle cx="10.8" cy="12.6" r="1" fill="currentColor" stroke="none" />
+      <path d="M7 16.2c1.3 1.4 3.4 1.4 4.6 0" />
+    </svg>
+  );
+}
+
+function CameraIcon({ size = 28 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M4 8h3l1.6-2.4h6.8L17 8h3v11H4z" /><circle cx="12" cy="13.2" r="3.4" /><path d="M17.6 10.6h.01" />
+    </svg>
+  );
+}
+
+/** 위젯: 둥근 네모 넷 (휴대폰 홈 화면 위젯 모양) */
+function WidgetIcon() {
+  return (
+    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect x="3.5" y="3.5" width="7.5" height="7.5" rx="2.2" fill="#f6e39b" />
+      <rect x="13" y="3.5" width="7.5" height="7.5" rx="2.2" />
+      <rect x="3.5" y="13" width="7.5" height="7.5" rx="2.2" />
+      <rect x="13" y="13" width="7.5" height="7.5" rx="3.75" fill="#f7b3c8" />
     </svg>
   );
 }

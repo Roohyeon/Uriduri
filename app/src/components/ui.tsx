@@ -76,12 +76,12 @@ export function AppBar({ title, right, onBack, bare = false }: { title: string; 
 }
 
 /** 아래 안내 메시지 — 5초 동안 보이고 닫기 버튼이 있다 [03-2.2.1]. 홈 바 영역을 피한다 [04 ui:83] */
-export function Toast({ children, onClose }: { children: ReactNode; onClose?: () => void }) {
+export function Toast({ children, onClose, bottom }: { children: ReactNode; onClose?: () => void; bottom?: string }) {
   return (
     <div
       role="status"
       className="fixed inset-x-4 z-50 mx-auto flex max-w-sm items-center gap-3 rounded-sm bg-ink py-1 pr-1 pl-4 text-sm text-paper"
-      style={{ bottom: 'calc(1.5rem + env(safe-area-inset-bottom))' }}
+      style={{ bottom: bottom ?? 'calc(1.5rem + env(safe-area-inset-bottom))' }}
     >
       <span className="flex-1 py-2">{children}</span>
       {onClose && (
@@ -93,8 +93,8 @@ export function Toast({ children, onClose }: { children: ReactNode; onClose?: ()
   );
 }
 
-/** 안내 메시지 띄우기: const [toast, showToast] = useToast(); */
-export function useToast(ms = 5000): [ReactNode, (msg: string) => void] {
+/** 안내 메시지 띄우기: const [toast, showToast] = useToast(); bottom: 아래 떠 있는 탭을 피할 때 */
+export function useToast(ms = 5000, bottom?: string): [ReactNode, (msg: string) => void] {
   const [msg, setMsg] = useState('');
   const timer = useRef<number>();
   const show = useCallback((m: string) => {
@@ -103,7 +103,7 @@ export function useToast(ms = 5000): [ReactNode, (msg: string) => void] {
     timer.current = window.setTimeout(() => setMsg(''), ms);
   }, [ms]);
   useEffect(() => () => window.clearTimeout(timer.current), []);
-  const node = msg ? <Toast onClose={() => setMsg('')}>{msg}</Toast> : null;
+  const node = msg ? <Toast onClose={() => setMsg('')} bottom={bottom}>{msg}</Toast> : null;
   return [node, show];
 }
 
