@@ -149,7 +149,7 @@ export function Sheet({ title, children, onClose }: { title: string; children: R
         aria-modal="true"
         aria-labelledby="sheet-title"
         tabIndex={-1}
-        className="mx-auto max-h-[90vh] w-full max-w-md overflow-y-auto overscroll-contain bg-paper px-4 pt-6 outline-none"
+        className="sheet-box mx-auto max-h-[90vh] w-full max-w-md overflow-y-auto overflow-x-hidden overscroll-contain bg-paper px-4 pt-6 outline-none"
         style={{ paddingBottom: 'calc(2rem + env(safe-area-inset-bottom))' }}
         onClick={(e) => e.stopPropagation()}
       >

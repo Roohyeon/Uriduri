@@ -56,6 +56,13 @@ const writeJson = (key: string, v: unknown) => {
   try { localStorage.setItem(key, JSON.stringify(v)); } catch { /* 저장이 막힌 브라우저: 이번만 유지 */ }
 };
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
+/** 크기(scale 적용)까지 넣어 조각 전체가 [0,W]×[0,H] 안에 있게. 화면보다 크면 가운데 */
+const fitBox = (x: number, y: number, w: number, h: number, scale: number, W: number, H: number) => {
+  const sw = w * scale, sh = h * scale;
+  const cx = sw >= W ? W / 2 : clamp(x + w / 2, sw / 2, W - sw / 2);
+  const cy = sh >= H ? H / 2 : clamp(y + h / 2, sh / 2, H - sh / 2);
+  return { x: cx - w / 2, y: cy - h / 2 };
+};
 /** 0°·90°… 바로 근처(1° 안)일 때만 반듯하게, 나머지는 0.1° 단위 그대로 */
 const snapTilt = (t: number) => {
   const n = Math.round(t / 90) * 90;
@@ -212,7 +219,10 @@ export function DecorBoard({ roomId, me, covered, ready, widgets, api, onEditPie
       if (!s && !readyRef.current) continue; // 아직 숨겨 둠
       if (!s) homed = true;
       const cx = (s ? s.fx : d.home[0]) * W, cy = (s ? s.fy : d.home[1]) * H;
-      placed[d.id] = { x: cx - sz.w / 2, y: cy - sz.h / 2, scale: s?.scale ?? 1, tilt: s?.tilt ?? d.tilt, flip: !!s?.flip, lock: !!s?.lock };
+      const scale = Math.min(s?.scale ?? 1, Math.max(MIN_SCALE, W / sz.w));
+      const bottom = H - parseFloat(getComputedStyle(root).paddingBottom || '0');
+      const at = fitBox(cx - sz.w / 2, cy - sz.h / 2, sz.w, sz.h, scale, W, bottom);
+      placed[d.id] = { x: at.x, y: at.y, scale, tilt: s?.tilt ?? d.tilt, flip: !!s?.flip, lock: !!s?.lock };
     }
     const next = { ...docRef.current, placed };
     setDoc(next);
@@ -300,12 +310,22 @@ export function DecorBoard({ roomId, me, covered, ready, widgets, api, onEditPie
     if (rec) commit(next);
     else setDoc(next);
   };
-  /** 가운데 점이 화면 안(아래 탭 위)에 있게 */
-  const keepInside = (id: string, x: number, y: number) => {
+  /** 조각 전체가 화면 안(아래 탭 위)에 있게 */
+  const keepInside = (id: string, x: number, y: number, scale = docRef.current.placed[id]?.scale ?? 1) => {
     const root = rootRef.current, s = sizesRef.current[id];
     if (!root || !s) return { x, y };
     const bottom = root.clientHeight - parseFloat(getComputedStyle(root).paddingBottom);
-    return { x: clamp(x + s.w / 2, 0, root.clientWidth) - s.w / 2, y: clamp(y + s.h / 2, 0, bottom) - s.h / 2 };
+    return fitBox(x, y, s.w, s.h, scale, root.clientWidth, bottom);
+  };
+  /** 화면 너비를 넘지 않는 가장 큰 크기 */
+  const maxScale = (id: string) => {
+    const root = rootRef.current, s = sizesRef.current[id];
+    return root && s?.w ? Math.max(MIN_SCALE, Math.min(MAX_SCALE, root.clientWidth / s.w)) : MAX_SCALE;
+  };
+  /** 크기를 바꾸고 화면 안으로 */
+  const keepScaled = (id: string, scale: number) => {
+    const p = docRef.current.placed[id];
+    return p ? { scale, ...keepInside(id, p.x, p.y, scale) } : { scale };
   };
   const remove = (id: string) => {
     const d = docRef.current;
@@ -432,7 +452,7 @@ export function DecorBoard({ roomId, me, covered, ready, widgets, api, onEditPie
         case 'resize': {
           if (e.pointerId !== g.pid) return;
           const d = Math.hypot(e.clientX - g.cx, e.clientY - g.cy);
-          patch(g.id, { scale: clamp(g.s0 * (d / g.d0), MIN_SCALE, MAX_SCALE) }, false);
+          patch(g.id, { scale: clamp(g.s0 * (d / g.d0), MIN_SCALE, maxScale(g.id)) }, false);
           return;
         }
         case 'rotate': {
@@ -447,7 +467,7 @@ export function DecorBoard({ roomId, me, covered, ready, widgets, api, onEditPie
           const [a, b] = [...pointers.current.values()];
           const d = Math.hypot(b.x - a.x, b.y - a.y);
           const ang = Math.atan2(b.y - a.y, b.x - a.x);
-          patch(g.id, { scale: clamp(g.s0 * (d / g.d0), MIN_SCALE, MAX_SCALE), tilt: g.t0 + ((ang - g.a0) * 180) / Math.PI }, false);
+          patch(g.id, { scale: clamp(g.s0 * (d / g.d0), MIN_SCALE, maxScale(g.id)), tilt: g.t0 + ((ang - g.a0) * 180) / Math.PI }, false);
           return;
         }
       }
@@ -473,16 +493,18 @@ export function DecorBoard({ roomId, me, covered, ready, widgets, api, onEditPie
           }
           break;
         }
-        case 'resize':
+        case 'resize': {
           if (e.pointerId !== g.pid) return;
-          patch(g.id, {});
+          const p = docRef.current.placed[g.id];
+          patch(g.id, p ? keepInside(g.id, p.x, p.y) : {});
           break;
+        }
         case 'rotate':
           if (e.pointerId !== g.pid) return;
         // falls through
         case 'pinch': {
           const p = docRef.current.placed[g.id];
-          if (p) { const t = snapTilt(p.tilt); patch(g.id, { tilt: t }); setNote(`${showDeg(t)} 돌렸어요`); }
+          if (p) { const t = snapTilt(p.tilt); patch(g.id, { tilt: t, ...keepInside(g.id, p.x, p.y) }); setNote(`${showDeg(t)} 돌렸어요`); }
           setTurning(false);
           break;
         }
@@ -545,7 +567,7 @@ export function DecorBoard({ roomId, me, covered, ready, widgets, api, onEditPie
     if (!p || p.lock) return;
     const step: Record<string, [number, number]> = { ArrowLeft: [-KEY_STEP, 0], ArrowRight: [KEY_STEP, 0], ArrowUp: [0, -KEY_STEP], ArrowDown: [0, KEY_STEP] };
     if (step[e.key]) { e.preventDefault(); patch(id, keepInside(id, p.x + step[e.key][0], p.y + step[e.key][1])); }
-    else if (e.key === '+' || e.key === '=') { e.preventDefault(); patch(id, { scale: clamp(p.scale * 1.1, MIN_SCALE, MAX_SCALE) }); }
+    else if (e.key === '+' || e.key === '=') { e.preventDefault(); patch(id, keepScaled(id, clamp(p.scale * 1.1, MIN_SCALE, maxScale(id)))); }
     else if (e.key === '-') { e.preventDefault(); patch(id, { scale: clamp(p.scale / 1.1, MIN_SCALE, MAX_SCALE) }); }
     else if (['[', ']', '{', '}'].includes(e.key)) {
       // [ ] 1°씩, Shift와 함께면 15°씩
@@ -761,7 +783,7 @@ export function DecorBoard({ roomId, me, covered, ready, widgets, api, onEditPie
               disabled={selPlaced.lock}
               onPointerDown={onResizeDown(sel.id)}
               onKeyDown={(e) => {
-                if (e.key === '+' || e.key === '=' || e.key === 'ArrowUp') { e.preventDefault(); patch(sel.id, { scale: clamp(selPlaced.scale * 1.1, MIN_SCALE, MAX_SCALE) }); }
+                if (e.key === '+' || e.key === '=' || e.key === 'ArrowUp') { e.preventDefault(); patch(sel.id, keepScaled(sel.id, clamp(selPlaced.scale * 1.1, MIN_SCALE, maxScale(sel.id)))); }
                 if (e.key === '-' || e.key === 'ArrowDown') { e.preventDefault(); patch(sel.id, { scale: clamp(selPlaced.scale / 1.1, MIN_SCALE, MAX_SCALE) }); }
               }}
             >

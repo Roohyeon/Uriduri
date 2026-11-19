@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { MOODS, MOOD_NAMES, type Mood, type Receipt } from '../data';
 import { MoodFace } from '../components/MoodFace';
-import { AppBar, Button, Field, Notice, Sheet, inputClass } from '../components/ui';
+import { Button, Field, Notice, Sheet, inputClass } from '../components/ui';
 import { ReceiptPaper } from '../components/Receipt';
 import { DateWheel } from '../components/WheelPicker';
 import { dday, fmtDate, todayIso, type IsoDate } from '../lib/dates';
@@ -141,16 +141,16 @@ export function ComposeScreen({
   const verb = rec ? '저장' : '발행';
 
   return (
-    <>
-      <AppBar
-        title={rec ? '영수증 수정' : '영수증 발행'}
-        right={
-          <button type="button" className="grid size-11 place-items-center rounded-full text-lg text-ink hover:bg-counter" aria-label="닫기" onClick={close}>
-            <span aria-hidden="true">✕</span>
-          </button>
-        }
-      />
-      <main className="space-y-6 px-4 pt-4 pb-10">
+    // 홈 다이어리와 같은 종이 바탕 · 손글씨 제목 · 유리 단추 (index.css .paper-page)
+    <div className="paper-page">
+      <header className="pp-head">
+        {/* 화면이 바뀌면 App이 이 제목으로 초점을 옮긴다 [03-2.4.3] */}
+        <h1 tabIndex={-1} className="pp-title">{rec ? '영수증 고치기' : '오늘의 영수증'}</h1>
+        <button type="button" className="pp-close" aria-label="닫기" onClick={close}>
+          <span aria-hidden="true">✕</span>
+        </button>
+      </header>
+      <main className="pp-main">
         {/* 첫 행동인 사진 고르기를 첫 화면 맨 위에 [02-2]. 한 번에 1장 (R4) */}
         <input ref={fileRef} type="file" accept="image/*,.heic,.heif" className="sr-only" tabIndex={-1} aria-hidden="true" onChange={onPick} />
         <button
@@ -158,7 +158,7 @@ export function ComposeScreen({
           onClick={() => fileRef.current?.click()}
           disabled={preparing || sending}
           aria-busy={preparing}
-          className={`flex w-full items-center justify-center gap-2 rounded-sm border-2 border-dashed border-edge bg-paper text-base font-semibold enabled:hover:bg-counter disabled:cursor-wait ${hasPhoto ? 'min-h-12' : 'min-h-28'}`}
+          className={`pp-pick ${hasPhoto ? 'pp-pick--small' : ''}`}
         >
           <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <rect x="3" y="5" width="18" height="15" rx="2" />
@@ -169,12 +169,13 @@ export function ComposeScreen({
         </button>
         {photoErr && <Notice tone="error">이 사진은 열 수 없어요. 다른 사진을 골라 주세요.</Notice>}
 
-        <section aria-label="미리보기" className="px-2">
+        <section aria-label="미리보기" className="pp-preview">
+          <span className="pp-tape" aria-hidden="true" />
           <ReceiptPaper r={preview} />
         </section>
 
         <div className="space-y-1">
-          <span id="date-label" className="block text-sm font-semibold">날짜</span>
+          <span id="date-label" className="pp-label">날짜</span>
           {hasPhoto ? (
             <>
               <button
@@ -182,7 +183,7 @@ export function ComposeScreen({
                 aria-labelledby="date-label date-value date-change"
                 aria-describedby="date-hint"
                 onClick={() => { setDraftDate(date); setDateSheet(true); }}
-                className={`${inputClass} flex items-center justify-between text-left font-receipt hover:bg-counter`}
+                className={`${inputClass} pp-input flex items-center justify-between text-left font-receipt`}
               >
                 <span id="date-value">{fmtDate(date)}</span>
                 <span id="date-change" className="font-body text-sm text-fade">바꾸기<span aria-hidden="true"> ›</span></span>
@@ -195,15 +196,15 @@ export function ComposeScreen({
         </div>
 
         <Field id="memo" label="한 줄 메모" hint={<span className="flex justify-end font-receipt tabular-nums">{countChars(memo)}/{LIMITS.memo}</span>}>
-          <input id="memo" name="memo" autoComplete="off" className={inputClass} placeholder="오늘 데이트를 한 줄로 남겨 보세요" value={memo} onChange={(e) => setMemo(clip(e.target.value, LIMITS.memo))} />
+          <input id="memo" name="memo" autoComplete="off" className={`${inputClass} pp-input`} placeholder="오늘 데이트를 한 줄로 남겨 보세요" value={memo} onChange={(e) => setMemo(clip(e.target.value, LIMITS.memo))} />
         </Field>
 
         <Field id="place" label="장소 (선택)" hint={<span className="flex justify-end font-receipt tabular-nums">{countChars(place)}/{LIMITS.place}</span>}>
-          <input id="place" name="place" autoComplete="off" className={inputClass} placeholder="예: 연남동 경의선숲길" value={place} onChange={(e) => setPlace(clip(e.target.value, LIMITS.place))} />
+          <input id="place" name="place" autoComplete="off" className={`${inputClass} pp-input`} placeholder="예: 연남동 경의선숲길" value={place} onChange={(e) => setPlace(clip(e.target.value, LIMITS.place))} />
         </Field>
 
         <fieldset className="space-y-2">
-          <legend className="text-sm font-semibold">오늘의 기분 (선택)</legend>
+          <legend className="pp-label">오늘의 기분 (선택)</legend>
           {/* [임시 Q10] 얼굴 아이콘 7종 */}
           <div className="flex flex-wrap gap-2">
             {MOODS.map((m) => (
@@ -214,7 +215,7 @@ export function ComposeScreen({
                 aria-label={MOOD_NAMES[m]}
                 title={MOOD_NAMES[m]}
                 onClick={() => setMood(mood === m ? undefined : m)}
-                className={`grid size-11 place-items-center rounded-full border text-ink ${mood === m ? 'border-2 border-ink bg-counter' : 'border-edge bg-paper hover:bg-counter'}`}
+                className="pp-mood"
               >
                 <MoodFace mood={m} size={26} label={false} />
               </button>
@@ -229,7 +230,7 @@ export function ComposeScreen({
         )}
         {!canPublish && !sending && !preparing && <p className="text-sm text-fade">사진과 한 줄 메모를 넣으면 {verb}할 수 있어요</p>}
 
-        <Button variant="seal" disabled={!canPublish} aria-busy={sending} onClick={submit}>
+        <Button variant="seal" className="pp-publish" disabled={!canPublish} aria-busy={sending} onClick={submit}>
           {sending ? `${verb}하는 중이에요…` : rec ? '저장하기' : failed ? '다시 발행하기' : '영수증 발행하기'}
         </Button>
       </main>
@@ -251,6 +252,6 @@ export function ComposeScreen({
           <Button variant="line" onClick={leave}>버리기</Button>
         </Sheet>
       )}
-    </>
+    </div>
   );
 }

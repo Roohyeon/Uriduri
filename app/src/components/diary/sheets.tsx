@@ -10,7 +10,7 @@ const choice =
   'cursor-pointer rounded-sm border border-rule bg-frame has-[:checked]:border-ink has-[:checked]:ring-2 has-[:checked]:ring-ink has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2';
 
 /** 스티커 붙이기: 스티커만 늘어놓는다 (이름·바탕 없이). 마지막 '텍스트'는 글씨 스티커 쓰기로 */
-const pick = 'grid h-24 w-full place-items-center rounded-lg transition-transform active:scale-90 focus-visible:outline-2 focus-visible:outline-offset-2';
+const pick = 'grid h-24 w-full min-w-0 place-items-center overflow-hidden rounded-lg transition-transform active:scale-90 focus-visible:outline-2 focus-visible:outline-offset-2';
 export function StickerPicker({ onPick, onWrite, onClose, hiddenWidgets = [], onRestore }: {
   onPick: (id: ArtId) => void; onWrite: () => void; onClose: () => void;
   /** 편집 화면에서 뗀 위젯: 여기서 다시 붙인다 */
@@ -171,27 +171,50 @@ export function LineComposer({ initial, suggestions, memo = false, onDone, onClo
 }
 
 export type { WidgetKind };
-const WIDGET_KINDS: { kind: WidgetKind; name: string }[] = [
+/** 'receipt': 홈의 최근 영수증 위젯 (스타일 없이 바로 붙인다) */
+export type PickKind = WidgetKind | 'receipt';
+
+const WIDGET_KINDS: { kind: PickKind; name: string }[] = [
   { kind: 'bucket', name: '버킷리스트' },
   { kind: 'memo', name: '메모장' },
   { kind: 'todo', name: '투두리스트' },
   { kind: 'frame', name: '포토프레임' },
+  { kind: 'receipt', name: '영수증' },
 ];
 
-/** 위젯 붙이기: 4가지 위젯 그림만 스티커처럼 (이름·바탕 없이) */
-export function WidgetPicker({ onPick, onClose }: { onPick: (k: WidgetKind) => void; onClose: () => void }) {
+/** 위젯 붙이기: 위젯 그림만 스티커처럼 (이름·바탕 없이) */
+export function WidgetPicker({ onPick, onClose }: { onPick: (k: PickKind) => void; onClose: () => void }) {
   return (
     <Sheet title="위젯 붙이기" onClose={onClose}>
       <ul className="grid grid-cols-2 gap-3">
         {WIDGET_KINDS.map((w) => (
           <li key={w.kind}>
             <button type="button" onClick={() => onPick(w.kind)} className="widget-pick" aria-label={w.name}>
-              <span className="widget-pick__art" aria-hidden="true"><WidgetPreview kind={w.kind} /></span>
+              <span className="widget-pick__art" aria-hidden="true">{w.kind === 'receipt' ? <ReceiptPreview /> : <WidgetPreview kind={w.kind} />}</span>
             </button>
           </li>
         ))}
       </ul>
     </Sheet>
+  );
+}
+
+/** 위젯 창의 영수증 그림 (예시) */
+function ReceiptPreview() {
+  return (
+    <span className="w-receipt" style={{ display: 'block' }}>
+      <span className="receipt" style={{ display: 'block' }}>
+        <span className="receipt__paper">
+          <span className="receipt__title">[ 영수증 ]</span>
+          <span className="receipt__rule" />
+          <span>우리 둘</span>
+          <span>2026.11.20</span>
+          <span className="receipt__row" style={{ marginTop: 3 }}><span>No.</span><span>12</span></span>
+          <span className="receipt__rule" />
+          <span className="receipt__row receipt__total"><span>TOTAL</span><span>D+411</span></span>
+        </span>
+      </span>
+    </span>
   );
 }
 

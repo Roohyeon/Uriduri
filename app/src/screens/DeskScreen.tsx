@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { MOOD_NAMES, photoBg, type Receipt } from '../data';
 import { useToast } from '../components/ui';
 import { addDays, dday, todayIso, type IsoDate } from '../lib/dates';
@@ -7,7 +7,7 @@ import { LineComposer, ListComposer, StickerPicker, StylePicker, TextComposer, W
 import { CameraSheet } from '../components/diary/CameraSheet';
 import { fitPhotos, type ListKind, type Piece } from '../components/diary/pieces';
 import { frameStyleOf, type FrameStyle, type ListStyle, type MemoStyle } from '../components/diary/styles';
-import { savePhoto } from '../services/diaryPhotos';
+import { listPhotos, photoUrl, savePhoto, type DiaryPhoto } from '../services/diaryPhotos';
 import type { BoardData, Nav, Session } from '../App';
 
 /*
@@ -34,8 +34,11 @@ type Open =
   | { kind: 'memo'; style: MemoStyle; editing?: Extract<Piece, { type: 'memo' }> }
   | { kind: 'list'; list: ListKind; style: ListStyle; editing?: Extract<Piece, { type: 'list' }> }
   /** frameId·cell: 포토프레임의 그 칸부터 빈 칸을 채운다 (count장까지) */
-  | { kind: 'camera'; frameId?: string; cell?: number; count?: number }
+  | { kind: 'camera'; frameId?: string; cell?: number; count?: number; toWidget?: boolean }
   | null;
+
+/** 사진 위젯에 보여 줄 다이어리 사진 (주소까지 읽어 온 것) */
+type ShownPhoto = DiaryPhoto & { url: string };
 
 export function DeskScreen({ session, board, nav }: { session: Session; board: BoardData; nav: Nav }) {
   const [toast, showToast] = useToast(5000, FOOTER_TOAST);
@@ -57,6 +60,26 @@ export function DeskScreen({ session, board, nav }: { session: Session; board: B
   const decorApi = useRef<DecorApi | null>(null);
   const [open, setOpen] = useState<Open>(null);
   const close = useCallback(() => setOpen(null), []);
+  const [addOpen, setAddOpen] = useState(false);
+
+  // 카메라로 찍은 가장 최근 사진 — 사진 위젯 자리에 보인다
+  const [shot, setShot] = useState<ShownPhoto | null>(null);
+  const showShot = useCallback(async (p: DiaryPhoto) => {
+    const url = await photoUrl(p.id).catch(() => undefined);
+    if (url) setShot({ ...p, url });
+  }, []);
+  useEffect(() => {
+    let alive = true;
+    listPhotos(room.id)
+      .then(async (ps) => {
+        for (const p of ps) {
+          const url = await photoUrl(p.id).catch(() => undefined);
+          if (url) { if (alive) setShot({ ...p, url }); return; }
+        }
+      })
+      .catch(() => undefined);
+    return () => { alive = false; };
+  }, [room.id]);
 
   // 위젯: 꾹 눌러 들고 어디든 옮기고, 톡 누르면 도구 (사진은 톡 = 사진첩, 영수증은 톡 = 영수증 보기)
   const widgets: WidgetDef[] = [
@@ -79,10 +102,13 @@ export function DeskScreen({ session, board, nav }: { session: Session; board: B
       home: [0.36, 0.32],
       body: (
         <div className="w-slot">
-          {latest ? (
+          {shot && (!latest || shot.date >= latest.date) ? (
+            // 영수증 사진보다 찍은 사진이 더 최근이면(같은 날 포함) 찍은 사진
+            <ShotCard p={shot} onOpen={() => nav({ name: 'album' })} />
+          ) : latest ? (
             <PhotoCard r={latest} newCount={newCount} onOpen={() => nav({ name: 'album' })} />
           ) : (
-            <button type="button" className="photo-empty" onClick={() => setOpen({ kind: 'camera' })}>
+            <button type="button" className="photo-empty" onClick={() => setOpen({ kind: 'camera', toWidget: true })}>
               <CameraIcon size={28} />
               오늘 첫 사진 찍기
             </button>
@@ -100,7 +126,10 @@ export function DeskScreen({ session, board, nav }: { session: Session; board: B
           {latest ? (
             <MiniReceipt r={latest} onOpen={() => nav({ name: 'detail', id: latest.id })} />
           ) : (
-            <p className="slot-empty">영수증이 여기에 붙어요</p>
+            <button type="button" className="slot-empty" onClick={() => nav({ name: 'compose' })}>
+              <ReceiptIcon />
+              첫 영수증 쓰기
+            </button>
           )}
         </div>
       ),
@@ -208,9 +237,13 @@ export function DeskScreen({ session, board, nav }: { session: Session; board: B
               </button>
             </li>
             <li>
-              <button type="button" className="icon-nav__btn icon-nav__btn--camera" aria-label="사진 찍어 붙이기" title="카메라" onClick={() => setOpen({ kind: 'camera' })}>
-                <CameraIcon size={28} />
-              </button>
+              <AddMenu
+                open={addOpen}
+                setOpen={setAddOpen}
+                items={[
+                  { key: 'camera', label: '사진', icon: <CameraIcon size={24} />, run: () => setOpen({ kind: 'camera' }) },
+                ]}
+              />
             </li>
             <li>
               <button type="button" className="icon-nav__btn" aria-label="위젯 붙이기" title="위젯" onClick={() => setOpen({ kind: 'widgets' })}>
@@ -254,7 +287,18 @@ export function DeskScreen({ session, board, nav }: { session: Session; board: B
         />
       )}
       {open?.kind === 'widgets' && (
-        <WidgetPicker onClose={close} onPick={(k) => setOpen({ kind: 'style', widget: k })} />
+        <WidgetPicker
+          onClose={close}
+          onPick={(k) => {
+            if (k !== 'receipt') { setOpen({ kind: 'style', widget: k }); return; }
+            // 영수증 위젯은 하나: 떼어 두었으면 다시 붙이고, 이미 있으면 알려 준다
+            close();
+            if (decorApi.current?.hiddenWidgets().includes('receipt')) {
+              decorApi.current.showWidget('receipt');
+              showToast('영수증 위젯을 붙였어요.');
+            } else showToast('영수증 위젯은 이미 붙어 있어요.');
+          }}
+        />
       )}
       {open?.kind === 'style' && (
         <StylePicker
@@ -304,10 +348,14 @@ export function DeskScreen({ session, board, nav }: { session: Session; board: B
               for (let i = open.cell ?? 0; i < photos.length && k < saved.length; i++) if (!photos[i]) photos[i] = saved[k++].id;
               decorApi.current?.update(f.id, { photos });
               showToast(`액자에 사진 ${k}장을 넣었어요.`);
+            } else if (open.toWidget) {
+              // 사진 위젯의 빈 자리에서 찍었으면 그 자리에 바로 보인다
+              showToast('사진을 넣었어요. 사진을 누르면 사진첩에서 볼 수 있어요.');
             } else {
               decorApi.current?.add({ type: 'photo', photoId: saved[0].id, date: saved[0].date });
               showToast('사진을 붙였어요. 사진을 누르면 사진첩에서 볼 수 있어요.');
             }
+            if (saved.length) await showShot(saved[saved.length - 1]);
             close();
           }}
         />
@@ -336,6 +384,17 @@ function PhotoCard({ r, newCount, onOpen }: { r: Receipt; newCount: number; onOp
   );
 }
 
+function ShotCard({ p, onOpen }: { p: ShownPhoto; onOpen: () => void }) {
+  return (
+    <button type="button" className="photo-card" onClick={onOpen} aria-label={`최근 사진 ${shortDate(p.date)}, 사진첩에서 보기`}>
+      <span className="photo-card__frame">
+        <span className="photo-card__img" style={{ background: `center / cover no-repeat url("${p.url}")` }} />
+      </span>
+      <span className="photo-card__cap" aria-hidden="true">{shortDate(p.date)}</span>
+    </button>
+  );
+}
+
 function MiniReceipt({ r, onOpen }: { r: Receipt; onOpen: () => void }) {
   const [y, m, d] = r.date.split('-');
   return (
@@ -352,6 +411,68 @@ function MiniReceipt({ r, onOpen }: { r: Receipt; onOpen: () => void }) {
         <span className="receipt__row receipt__total"><span>TOTAL</span><span>{r.dplus >= 1 ? `D+${r.dplus}` : `D-${1 - r.dplus}`}</span></span>
       </span>
     </button>
+  );
+}
+
+/* ───────────────── 가운데 + : 둥글게 펼쳐지는 메뉴 ───────────────── */
+
+type AddItem = { key: string; label: string; icon: ReactNode; run: () => void };
+
+function AddMenu({ open, setOpen, items }: { open: boolean; setOpen: (v: boolean) => void; items: AddItem[] }) {
+  const btn = useRef<HTMLButtonElement>(null);
+  const first = useRef<HTMLButtonElement>(null);
+  const wrap = useRef<HTMLDivElement>(null);
+
+  // 열리면 첫 메뉴로 초점. Esc·바깥을 누르면 닫는다
+  useEffect(() => {
+    if (!open) return;
+    first.current?.focus({ preventScroll: true });
+    const key = (e: globalThis.KeyboardEvent) => {
+      if (e.key === 'Escape') { e.stopPropagation(); setOpen(false); btn.current?.focus(); }
+    };
+    const down = (e: PointerEvent) => { if (!wrap.current?.contains(e.target as Node)) setOpen(false); };
+    document.addEventListener('keydown', key, true);
+    document.addEventListener('pointerdown', down);
+    return () => { document.removeEventListener('keydown', key, true); document.removeEventListener('pointerdown', down); };
+  }, [open, setOpen]);
+
+  // + 위쪽 부채꼴에 고르게: 왼쪽 위 → 위 → 오른쪽 위
+  const spread = 110;
+  const angle = (i: number) => (items.length === 1 ? -90 : -90 - spread / 2 + (spread * i) / (items.length - 1));
+
+  return (
+    <div ref={wrap} className={`radial ${open ? 'is-open' : ''}`}>
+      <ul id="add-menu" className="radial__menu" role="menu" aria-label="붙이기">
+        {items.map((it, i) => (
+          <li key={it.key} role="none" style={{ '--a': `${angle(i)}deg`, '--i': i } as CSSProperties}>
+            <button
+              ref={i === 0 ? first : undefined}
+              type="button"
+              role="menuitem"
+              className="radial__item"
+              tabIndex={open ? 0 : -1}
+              aria-hidden={!open}
+              onClick={() => { setOpen(false); it.run(); }}
+            >
+              <span className="radial__icon">{it.icon}</span>
+              <span className="radial__label">{it.label}</span>
+            </button>
+          </li>
+        ))}
+      </ul>
+      <button
+        ref={btn}
+        type="button"
+        className="icon-nav__btn icon-nav__btn--camera radial__toggle"
+        aria-label={open ? '붙이기 메뉴 닫기' : '붙이기 메뉴 열기'}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-controls="add-menu"
+        onClick={() => setOpen(!open)}
+      >
+        <PlusIcon />
+      </button>
+    </div>
   );
 }
 
@@ -551,6 +672,23 @@ function CameraIcon({ size = 28 }: { size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <path d="M4 8h3l1.6-2.4h6.8L17 8h3v11H4z" /><circle cx="12" cy="13.2" r="3.4" /><path d="M17.6 10.6h.01" />
+    </svg>
+  );
+}
+
+/** 영수증: 아래가 톱니처럼 뜯긴 종이 */
+function ReceiptIcon() {
+  return (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M6 3h12v18l-2-1.4-2 1.4-2-1.4-2 1.4-2-1.4L6 21z" /><path d="M9 8h6M9 11.5h6M9 15h3.5" />
+    </svg>
+  );
+}
+
+function PlusIcon() {
+  return (
+    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true">
+      <path d="M12 5v14M5 12h14" />
     </svg>
   );
 }

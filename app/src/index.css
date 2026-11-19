@@ -514,7 +514,8 @@
   }
   & .photo-empty { aspect-ratio: 1; }
   & .slot-empty { aspect-ratio: 3 / 4; font-size: var(--hand-md); text-align: center; }
-  & .photo-empty:hover { background: rgb(42 38 34 / 0.03); }
+  & .photo-empty:hover,
+  & button.slot-empty:hover { background: rgb(42 38 34 / 0.03); }
   & .receipt { position: relative; display: block; width: 100%; transform: rotate(2deg); text-align: left; }
   & .receipt__paper {
     display: block; background: #fff;
@@ -884,6 +885,152 @@
   -webkit-backdrop-filter: var(--glass-blur);
   backdrop-filter: var(--glass-blur);
   box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.45), inset 0 0 0 1px rgb(255 255 255 / 0.18), 0 8px 18px -6px rgb(30 26 40 / 0.55);
+}
+
+/* 아래에서 올라오는 창(스티커·위젯 고르기 등): 다이어리 화면 너비(모바일)를 넘지 않게 */
+:is(.diary, .paper-page) .sheet-box { max-width: var(--app-max); }
+:is(.diary, .paper-page) .sheet-box :is(ul, li) { min-width: 0; }
+
+/* ───── 영수증 발행·고치기: 홈 다이어리와 같은 느낌 (2026-11-20) ─────
+ * 종이 바탕 · 손글씨 제목과 이름표 · 유리 닫기 단추 · 테이프로 붙인 영수증 미리보기
+ * 입력칸·기분 단추는 잉크 테두리 + 아래 그림자(책장 단추와 같은 방식), 발행 단추는 홈의 + 처럼 어둡게 물든 유리
+ */
+.paper-page {
+  --d-paper: #faf9f6;
+  --d-ink: #2a2622;
+  --d-ink-soft: #6b6356;
+  --d-rule: #d9cfbb;
+  --d-sticky: #f6e39b;
+  --d-tape: rgb(232 210 150 / 0.8);
+  --d-seal: #c93a2b;
+  --pad: clamp(12px, 4.5vw, 18px);
+  --hand-xl: clamp(30px, 9vw, 38px);
+  --hand-lg: clamp(19px, 5.6vw, 23px);
+  --app-max: 390px;
+  --glass-fill: rgb(255 255 255 / 0.42);
+  --glass-edge: rgb(255 255 255 / 0.75);
+  --glass-blur: blur(20px) saturate(180%);
+  --glass-shine: inset 0 1px 0 rgb(255 255 255 / 0.95), inset 0 -1px 0 rgb(255 255 255 / 0.3), inset 0 0 0 1px rgb(255 255 255 / 0.4);
+  --glass-drop: 0 10px 30px -10px rgb(40 36 60 / 0.35), 0 2px 6px -2px rgb(40 36 60 / 0.18);
+  --glass-tint: rgb(42 38 34 / 0.78);
+
+  min-height: 100dvh;
+  max-width: var(--app-max);
+  margin: 0 auto;
+  background-color: var(--d-paper);
+  color: var(--d-ink);
+}
+.paper-page .pp-head {
+  position: sticky; top: 0; z-index: 10;
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: calc(var(--pad) + env(safe-area-inset-top)) var(--pad) 8px;
+  background: linear-gradient(var(--d-paper) 70%, rgb(250 249 246 / 0));
+}
+.paper-page .pp-title { margin: 0; font-family: var(--font-hand); font-size: var(--hand-xl); font-weight: 400; line-height: 1.1; outline: none; }
+.paper-page .pp-close {
+  display: grid; place-items: center; width: 44px; height: 44px; border-radius: 999px; font-size: 16px;
+  background: var(--glass-fill); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-edge); box-shadow: var(--glass-shine), var(--glass-drop); color: var(--d-ink);
+}
+.paper-page .pp-close:hover { background: rgb(255 255 255 / 0.7); }
+.paper-page .pp-main { display: flex; flex-direction: column; gap: 22px; padding: 4px var(--pad) calc(40px + env(safe-area-inset-bottom)); }
+
+/* 사진 고르기: 홈의 빈 사진 칸과 같은 점선 상자 + 손글씨 */
+.paper-page .pp-pick {
+  display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; min-height: 120px;
+  border: 1.5px dashed var(--d-rule); border-radius: 14px; background: rgb(255 255 255 / 0.5);
+  font-family: var(--font-hand); font-size: var(--hand-lg); color: var(--d-ink-soft);
+}
+.paper-page .pp-pick--small { min-height: 52px; }
+.paper-page .pp-pick:enabled:hover { background: rgb(42 38 34 / 0.03); }
+.paper-page .pp-pick:disabled { cursor: wait; }
+
+/* 미리보기: 살짝 기울여 테이프로 붙인 영수증 */
+.paper-page .pp-preview { position: relative; padding: 14px 12px 0; transform: rotate(-1.2deg); }
+.paper-page .pp-preview > :not(.pp-tape) { filter: drop-shadow(0 1px 2px rgb(42 38 34 / 0.2)) drop-shadow(0 12px 16px rgb(42 38 34 / 0.14)); }
+.paper-page .pp-tape {
+  position: absolute; top: 2px; left: 50%; z-index: 1; width: 84px; height: 22px;
+  transform: translateX(-50%) rotate(3deg); background: var(--d-tape);
+  box-shadow: 0 1px 2px rgb(42 38 34 / 0.12);
+}
+
+/* 이름표: 손글씨 */
+.paper-page .pp-label,
+.paper-page .pp-main label[for] {
+  display: block; margin-bottom: 2px;
+  font-family: var(--font-hand); font-size: var(--hand-lg); font-weight: 400; line-height: 1.1; color: var(--d-ink);
+}
+
+/* 입력칸: 흰 종이 + 잉크 테두리 + 아래 그림자 */
+.paper-page .pp-input {
+  min-height: 48px; border: 1.5px solid var(--d-ink); border-radius: 12px; background: #fff;
+  box-shadow: 0 2px 0 var(--d-ink);
+}
+.paper-page button.pp-input:hover { background: var(--d-paper); }
+.paper-page .pp-input:focus-visible { outline: 2px solid var(--d-ink); outline-offset: 2px; }
+
+/* 기분: 동그란 스티커 단추, 고르면 노란 포스트잇 색 */
+.paper-page .pp-mood {
+  display: grid; place-items: center; width: 46px; height: 46px; border-radius: 999px;
+  border: 1.5px solid var(--d-ink); background: #fff; color: var(--d-ink);
+  box-shadow: 0 2px 0 var(--d-ink); transition: transform 120ms;
+}
+.paper-page .pp-mood:hover { background: var(--d-paper); }
+.paper-page .pp-mood:active { transform: translateY(2px); box-shadow: none; }
+.paper-page .pp-mood[aria-pressed="true"] { background: var(--d-sticky); transform: rotate(-6deg); }
+
+/* 발행: 홈의 + 와 같은 어둡게 물든 유리 알약 */
+.paper-page .pp-publish {
+  min-height: 54px; border-radius: 999px;
+  background: var(--glass-tint); color: #fff;
+  -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.45), inset 0 0 0 1px rgb(255 255 255 / 0.18), 0 8px 18px -6px rgb(30 26 40 / 0.55);
+  font-size: 16px; font-weight: 700;
+}
+.paper-page .pp-publish:enabled:hover { background: var(--d-ink); }
+.paper-page .pp-publish:disabled { background: var(--d-rule); color: rgb(42 38 34 / 0.6); box-shadow: none; }
+@media (prefers-reduced-motion: reduce) {
+  .paper-page .pp-mood { transition: none; }
+}
+
+/* 가운데 + : 누르면 위쪽 부채꼴로 메뉴가 펼쳐진다 (Radial Menu) */
+.diary .radial { position: relative; display: grid; place-items: center; }
+.diary .radial__toggle svg { transition: transform 220ms cubic-bezier(0.3, 1.4, 0.5, 1); }
+.diary .radial.is-open .radial__toggle svg { transform: rotate(135deg); }
+.diary .radial__menu {
+  position: absolute; left: 50%; top: 50%; width: 0; height: 0;
+  margin: 0; padding: 0; list-style: none;
+}
+.diary .radial__menu > li {
+  --r: 92px;
+  position: absolute; left: 0; top: 0;
+  transform: translate(-50%, -50%) rotate(var(--a)) translateX(0) rotate(calc(-1 * var(--a))) scale(0.4);
+  opacity: 0; pointer-events: none;
+  transition: transform 260ms cubic-bezier(0.3, 1.4, 0.5, 1), opacity 160ms;
+  transition-delay: calc(var(--i) * 30ms);
+}
+.diary .radial.is-open .radial__menu > li {
+  transform: translate(-50%, -50%) rotate(var(--a)) translateX(var(--r)) rotate(calc(-1 * var(--a))) scale(1);
+  opacity: 1; pointer-events: auto;
+}
+.diary .radial__item { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.diary .radial__icon {
+  display: grid; place-items: center; width: 52px; height: 52px; border-radius: 999px;
+  background: var(--glass-fill); -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-edge); box-shadow: var(--glass-shine), var(--glass-drop);
+  color: var(--d-ink); transition: transform 120ms;
+}
+.diary .radial__item:hover .radial__icon { background: rgb(255 255 255 / 0.7); }
+.diary .radial__item:active .radial__icon { transform: scale(0.92); }
+.diary .radial__item:focus-visible { outline: none; }
+.diary .radial__item:focus-visible .radial__icon { outline: 2px solid var(--d-ink); outline-offset: 2px; }
+.diary .radial__label {
+  padding: 1px 8px; border-radius: 999px; background: rgb(255 255 255 / 0.85);
+  font-size: 12px; font-weight: 700; color: var(--d-ink); white-space: nowrap;
+}
+@media (prefers-reduced-motion: reduce) {
+  .diary .radial__menu > li,
+  .diary .radial__toggle svg { transition: none; }
 }
 
 /* 설정 버튼: 작은 유리 원 */
