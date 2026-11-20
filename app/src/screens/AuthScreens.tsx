@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react';
 import { AppBar, Button, EmptyState, Field, Notice, Sheet, TextButton, inputClass, useToast } from '../components/ui';
-import { CoupleMark } from '../components/Receipt';
 import { DateWheel } from '../components/WheelPicker';
-import { dday, fmtDate, todayIso } from '../lib/dates';
+import { todayIso } from '../lib/dates';
 import { LIMITS, clip, countChars, isValidText } from '../lib/text';
 import { parseInviteInput, type InviteStatus } from '../lib/invite';
 import {
@@ -38,6 +37,15 @@ export async function copyInvite(token: string, show: (m: string) => void) {
   }
 }
 
+/** 지난번 로그인 방식 말풍선 — 해당 단추 위에 뜬다 */
+function LastBubble({ provider }: { provider: Provider }) {
+  return (
+    <p id="last-login" className="pp-bubble">
+      지난번엔 <b>{PROVIDER_NAMES[provider]}</b>로 로그인했어요
+    </p>
+  );
+}
+
 /** 로그인 (R1, D19, D28) · 초대 받음 로그인 전 (R3, D33) */
 export function LoginScreen({ nav, invite = false, onSignedIn }: { nav: Nav; invite?: boolean; onSignedIn: () => Promise<unknown> }) {
   const last = lastProvider();
@@ -66,23 +74,41 @@ export function LoginScreen({ nav, invite = false, onSignedIn }: { nav: Nav; inv
     }
   };
   return (
-    <main className="flex min-h-screen flex-col justify-between px-6 pt-20 pb-10">
-      <div>
-        {/* 첫 화면의 주인공: 우리두리 로고 (사용자 요청 2026-11-18) */}
-        <h1 className="flex flex-col items-center gap-3 outline-none">
-          <CoupleMark className="h-16 w-[6.4rem] text-ink" />
-          <span className="text-2xl font-bold tracking-tight">우리두리</span>
-        </h1>
-        {nickname && <p className="mt-6 text-center text-sm text-fade"><b className="text-ink">{nickname}</b>님, 마지막으로 로그인만 하면 돼요</p>}
-        {err && <div className="mt-6"><Notice tone="error">로그인하지 못했어요. 다시 시도해 주세요.</Notice></div>}
-      </div>
-      <div className="mt-10 space-y-2">
-        {last && <p className="pb-1 text-center text-sm text-fade">지난번엔 <b className="text-ink">{PROVIDER_NAMES[last]}</b>로 로그인했어요</p>}
-        <Button variant="kakao" disabled={busy} onClick={() => login('kakao')}>카카오로 시작하기</Button>
-        <Button variant="google" disabled={busy} onClick={() => login('google')}>구글로 시작하기</Button>
-        {/* [임시 Q18] 4주 테스트 동안 약관 링크 생략. 외부 공개 전에 넣는다 */}
-      </div>
-    </main>
+    // 홈 다이어리와 같은 종이 바탕 · 손글씨 · 테이프 붙인 포스트잇 (index.css .paper-page, 2026-11-20)
+    <div className="paper-page pp-flow">
+      <main className="flex flex-1 flex-col justify-between px-6 pt-20 pb-6">
+        <div>
+          {/* 그림은 빼고 글자만, 시작 화면의 '우리두리' 글자 모양으로 크게 (2026-11-20 사용자 요청) */}
+          <h1 className="text-center outline-none">
+            <span className="pp-logo sticker-text text-[40px] font-black tracking-tight">우리두리</span>
+          </h1>
+          {nickname && (
+            <p className="mt-6 text-center text-[16px] text-fade">
+              <b className="block text-[23px] font-bold text-ink">모든 준비가 완료됐어요</b>
+              이제 우리 페이지로 가볼까요?
+            </p>
+          )}
+          {err && <div className="mt-6"><Notice tone="error">로그인하지 못했어요. 다시 시도해 주세요.</Notice></div>}
+        </div>
+        <div className="mt-10 space-y-3">
+          {/* 약관 동의 안내 — 링크·본문은 나중에 (2026-11-20 사용자 요청) */}
+          <p className="pp-legal pp-legal--consent text-center">계속하기는 개인정보 보호정책 및 서비스 약관에 동의하는 것을 의미합니다.</p>
+          {/* 지난번 로그인 방식은 그 단추 위 말풍선으로 (2026-11-20 사용자 요청) */}
+          <div className="relative">
+            {last === 'kakao' && <LastBubble provider="kakao" />}
+            <Button variant="kakao" className="pp-btn" disabled={busy} aria-describedby={last === 'kakao' ? 'last-login' : undefined} onClick={() => login('kakao')}>카카오로 계속하기</Button>
+          </div>
+          <div className="relative">
+            {last === 'google' && <LastBubble provider="google" />}
+            <Button variant="google" className="pp-btn pp-btn--white" disabled={busy} aria-describedby={last === 'google' ? 'last-login' : undefined} onClick={() => login('google')}>구글로 계속하기</Button>
+          </div>
+        </div>
+      </main>
+      {/* 푸터: 글자만, 자세한 내용은 나중에 (2026-11-20 사용자 요청) */}
+      <footer className="pp-legal px-6 pb-[calc(24px+env(safe-area-inset-bottom))] text-center text-xs">
+        개인정보 보호 정책 | 서비스 약관
+      </footer>
+    </div>
   );
 }
 
@@ -208,21 +234,28 @@ export function NicknameScreen({ nav, loggedIn, onSaved }: { nav: Nav; loggedIn:
     }
   };
   return (
-    <>
-      <AppBar title="닉네임 정하기" />
-      <main className="space-y-6 px-6 pt-10">
-        <div>
-          <h2 className="text-xl font-bold text-balance">닉네임을 정해 주세요</h2>
-          <p className="mt-2 text-sm text-fade">영수증과 알림에 이 닉네임으로 보여요.</p>
+    <div className="paper-page pp-flow">
+      <header className="pp-head pp-head--center">
+        {/* 이전으로 돌아가기 (2026-11-20 사용자 요청) — 로그인 전이면 소개로 */}
+        {/* 이전 단추는 늘 보인다 (2026-11-20 사용자 요청). 로그인 전이면 소개로, 로그인 후면 브라우저의 바로 전 화면으로 */}
+        <button type="button" className="pp-close pp-back" aria-label="이전으로 돌아가기" onClick={() => (loggedIn ? window.history.back() : nav({ name: 'intro' }))}>
+          <span aria-hidden="true">‹</span>
+        </button>
+      </header>
+      <main className="pp-main pp-flow__main">
+        {/* 제목과 입력칸을 화면 세로 가운데에 (2026-11-20 사용자 요청) */}
+        <div className="pp-vcenter">
+        <h1 tabIndex={-1} className="pp-title pp-title--plain">호칭이 무엇인가요?</h1>
+        {/* [임시 Q7] 최대 10자, 설정에서 변경 가능. 보이는 이름표는 지우고 읽기용 이름만 남김 (2026-11-20 사용자 요청) */}
+        <div className="space-y-1">
+          <input id="nick" name="nickname" aria-label="닉네임" aria-describedby="nick-hint" className={`${inputClass} pp-input`} placeholder="닉네임" value={nick} onChange={(e) => setNick(clip(e.target.value, LIMITS.nickname))} onKeyDown={(e) => { if (e.key === 'Enter' && isValidText(nick, LIMITS.nickname)) void next(); }} autoComplete="nickname" spellCheck={false} />
+          <div id="nick-hint" className="flex justify-end text-xs text-fade"><span className="font-receipt tabular-nums">{countChars(nick)}/{LIMITS.nickname}</span></div>
         </div>
-        {/* [임시 Q7] 최대 10자, 설정에서 변경 가능 */}
-        <Field id="nick" label="닉네임" hint={<span className="flex justify-between"><span>최대 {LIMITS.nickname}자</span><span className="font-receipt tabular-nums">{countChars(nick)}/{LIMITS.nickname}</span></span>}>
-          <input id="nick" name="nickname" className={inputClass} placeholder="예: 민지" value={nick} onChange={(e) => setNick(clip(e.target.value, LIMITS.nickname))} onKeyDown={(e) => { if (e.key === 'Enter' && isValidText(nick, LIMITS.nickname)) void next(); }} autoComplete="nickname" spellCheck={false} />
-        </Field>
+        </div>
         {err && <Notice tone="error">저장하지 못했어요. 다시 시도해 주세요.</Notice>}
-        <Button disabled={!isValidText(nick, LIMITS.nickname) || busy} aria-busy={busy} onClick={next}>다음</Button>
+        <Button className="pp-publish pp-publish--glass pp-flow__next" disabled={!isValidText(nick, LIMITS.nickname) || busy} aria-busy={busy} onClick={next}>다음</Button>
       </main>
-    </>
+    </div>
   );
 }
 
@@ -232,27 +265,26 @@ export function AnniversaryScreen({ nav, loggedIn }: { nav: Nav; loggedIn: boole
   const today = todayIso();
   const [date, setDate] = useState(pendingAnniversary.get() ?? today);
   return (
-    <>
-      <AppBar title="사귄 날" />
-      <main className="space-y-6 px-6 pt-10">
-        <div>
-          <h2 className="text-xl font-bold text-balance">우리가 사귄 날을 알려 주세요</h2>
-          <p className="mt-2 text-sm text-fade">위아래로 굴려서 고르고, 가운데 숫자를 누르면 직접 쓸 수 있어요.</p>
-        </div>
-        <DateWheel value={date} onChange={setDate} max={today} minYear={1990} />
-        {/* 고르는 대로 영수증 한 줄처럼 미리 보여 준다 */}
-        <div aria-live="polite" className="bg-paper px-5 py-4 font-receipt shadow-paper">
-          <div className="flex justify-between text-sm"><span>사귄 날</span><span>{fmtDate(date, false)}</span></div>
-          <div className="perforation mt-2 flex items-baseline justify-between pt-2">
-            <span className="text-sm">오늘</span>
-            <span className="text-xl font-semibold">D+{dday(date, today)}</span>
+    <div className="paper-page pp-flow">
+      <header className="pp-head pp-head--center">
+        {/* 이전으로 돌아가기 (2026-11-20 사용자 요청) — 로그인 전이면 닉네임으로 */}
+        {/* 이전 단추는 늘 보인다 (2026-11-20 사용자 요청). 로그인 전이면 닉네임으로, 로그인 후면 우리 방 만들기로 */}
+        <button type="button" className="pp-close pp-back" aria-label="이전으로 돌아가기" onClick={() => nav({ name: loggedIn ? 'noroom' : 'nickname' })}>
+          <span aria-hidden="true">‹</span>
+        </button>
+      </header>
+      <main className="pp-main pp-flow__main">
+        {/* 안내 문구·D+ 미리보기·초대 안내는 지움, 휠은 바탕 없이 (2026-11-20 사용자 요청) */}
+        {/* 제목을 휠 바로 위에 두고 둘을 화면 세로·가로 가운데에 (닉네임 화면과 같은 배치, 2026-11-20 사용자 요청) */}
+        <div className="pp-vcenter">
+          <h1 tabIndex={-1} className="pp-title pp-title--plain">사귄 날이 언제인가요?</h1>
+          <div className="pp-wheel pp-wheel--bare">
+            <DateWheel value={date} onChange={setDate} max={today} minYear={1990} />
           </div>
-          <p className="mt-1 text-right text-xs text-fade">사귄 날을 1일로 세요</p>
         </div>
-        <p className="text-xs text-fade">초대받은 상대에게는 묻지 않아요. 설정에서 둘 다 고칠 수 있어요.</p>
-        <Button onClick={() => { pendingAnniversary.set(date); nav({ name: loggedIn ? 'noroom' : 'login' }); }}>다음</Button>
+        <Button className="pp-publish pp-publish--glass pp-flow__next" onClick={() => { pendingAnniversary.set(date); nav({ name: loggedIn ? 'noroom' : 'login' }); }}>다음</Button>
       </main>
-    </>
+    </div>
   );
 }
 
@@ -330,9 +362,10 @@ export function NoRoomScreen({
     nav({ name: 'invite', token });
   };
   return (
-    <>
-      <AppBar title="우리 방" />
-      <main className="space-y-4 px-6 pt-6">
+    // 닉네임·사귄 날 화면과 같은 종이 바탕·가운데 정렬·유리 단추 (2026-11-20 사용자 요청)
+    <div className="paper-page pp-flow">
+      <header className="pp-head pp-head--center" />
+      <main className="pp-main pp-flow__main">
         {deleted && <Notice>방이 삭제됐어요. 새 방을 만들거나 초대 링크를 받아 들어갈 수 있어요.</Notice>}
         {suspect && (
           <Notice>
@@ -340,35 +373,40 @@ export function NoRoomScreen({
             <TextButton onClick={otherAccount}>{PROVIDER_NAMES[suspect]}로 다시 로그인</TextButton>
           </Notice>
         )}
-        <EmptyState mark="🧾" title="아직 우리 방이 없어요" body="방을 만들고 초대 링크를 보내면, 둘만의 영수증을 쌓을 수 있어요." />
-        {err && <Notice tone="error">방을 만들지 못했어요. 다시 시도해 주세요.</Notice>}
-        <Button disabled={busy} aria-busy={busy} onClick={create}>우리 방 만들기</Button>
-        {pasteOpen ? (
-          <form className="space-y-2" onSubmit={(e) => { e.preventDefault(); openPasted(); }}>
-            <Field id="invite-link" label="받은 초대 링크" hint="카톡으로 받은 링크를 길게 눌러 복사한 뒤 붙여 넣어 주세요.">
-              <input
-                id="invite-link"
-                name="invite-link"
-                type="text" // url로 하면 카톡 문구가 섞인 붙여 넣기를 브라우저가 막는다
-                inputMode="url"
-                autoComplete="off"
-                autoCapitalize="off"
-                spellCheck={false}
-                className={inputClass}
-                placeholder="https://…/i/…"
-                value={pasted}
-                aria-invalid={pasteErr}
-                onChange={(e) => { setPasted(e.target.value); setPasteErr(false); }}
-              />
-            </Field>
-            {pasteErr && <Notice tone="error">초대 링크가 아니에요. 받은 링크를 그대로 붙여 넣어 주세요.</Notice>}
-            <Button type="submit" variant="line" disabled={!pasted.trim()}>이 링크로 들어가기</Button>
-          </form>
-        ) : (
-          <Button variant="line" onClick={() => setPasteOpen(true)}>초대 링크를 받았어요</Button>
-        )}
-        <div className="pt-6 text-center">
-          <TextButton className="text-fade" onClick={() => setLeaveOpen(true)}>탈퇴하기</TextButton>
+        <div className="pp-vcenter">
+          <h1 tabIndex={-1} className="pp-title pp-title--plain">아직 우리 방이 없어요</h1>
+          <p className="pp-sub">방을 만들고 초대 링크를 보내면, 둘만의 영수증을 쌓을 수 있어요.</p>
+        </div>
+        <div className="pp-flow__next space-y-3">
+          {err && <Notice tone="error">방을 만들지 못했어요. 다시 시도해 주세요.</Notice>}
+          <Button className="pp-publish pp-publish--glass" disabled={busy} aria-busy={busy} onClick={create}>우리 방 만들기</Button>
+          {pasteOpen ? (
+            <form className="space-y-2" onSubmit={(e) => { e.preventDefault(); openPasted(); }}>
+              <Field id="invite-link" label="받은 초대 링크" hint="카톡으로 받은 링크를 길게 눌러 복사한 뒤 붙여 넣어 주세요.">
+                <input
+                  id="invite-link"
+                  name="invite-link"
+                  type="text" // url로 하면 카톡 문구가 섞인 붙여 넣기를 브라우저가 막는다
+                  inputMode="url"
+                  autoComplete="off"
+                  autoCapitalize="off"
+                  spellCheck={false}
+                  className={`${inputClass} pp-input`}
+                  placeholder="https://…/i/…"
+                  value={pasted}
+                  aria-invalid={pasteErr}
+                  onChange={(e) => { setPasted(e.target.value); setPasteErr(false); }}
+                />
+              </Field>
+              {pasteErr && <Notice tone="error">초대 링크가 아니에요. 받은 링크를 그대로 붙여 넣어 주세요.</Notice>}
+              <Button type="submit" variant="line" className="pp-btn pp-btn--white" disabled={!pasted.trim()}>이 링크로 들어가기</Button>
+            </form>
+          ) : (
+            <Button variant="line" className="pp-btn pp-btn--white" onClick={() => setPasteOpen(true)}>초대 링크를 받았어요</Button>
+          )}
+          <div className="pt-3 text-center">
+            <TextButton className="text-fade" onClick={() => setLeaveOpen(true)}>탈퇴하기</TextButton>
+          </div>
         </div>
       </main>
       {leaveOpen && (
@@ -380,7 +418,7 @@ export function NoRoomScreen({
           <Button variant="seal" disabled={leaving} aria-busy={leaving} onClick={leave}>{leaving ? '탈퇴하는 중이에요…' : '탈퇴하기'}</Button>
         </Sheet>
       )}
-    </>
+    </div>
   );
 }
 
@@ -393,20 +431,29 @@ export function RoomCreatedScreen({ nav }: { nav: Nav }) {
   }, []);
   const url = token ? `${window.location.origin}/i/${token}` : '';
   return (
-    <>
-      <AppBar title="방 만들기 완료" />
-      <main className="space-y-5 px-6 pt-6">
-        <Notice><b>방이 생겼어요!</b> 상대에게 초대 링크를 보내 주세요.</Notice>
-        <div className="space-y-3 bg-paper p-4 shadow-paper">
-          <p className="text-sm text-fade">초대 링크</p>
-          <p translate="no" className="font-receipt text-sm break-all">{url || '…'}</p>
-          <Button disabled={!token} onClick={() => token && copyInvite(token, showToast)}>초대 링크 복사</Button>
-          <p className="text-sm text-fade">초대 링크는 한 사람만, 24시간 안에 쓸 수 있어요.</p>
+    // 닉네임·사귄 날·우리 방 만들기 화면과 같은 종이 바탕·가운데 정렬·유리 단추 (2026-11-20 사용자 요청)
+    <div className="paper-page pp-flow">
+      <header className="pp-head pp-head--center" />
+      <main className="pp-main pp-flow__main">
+        <div className="pp-vcenter">
+          <h1 tabIndex={-1} className="pp-title pp-title--plain">방이 생겼어요!</h1>
+          <p className="pp-sub">상대에게 초대 링크를 보내 주세요.</p>
+          {/* 초대 링크: 입력칸과 같은 유리판. 상자를 누르기만 해도 복사, 오른쪽 위에 복사 아이콘 (2026-11-20 사용자 요청) */}
+          <button type="button" className="pp-input pp-card pp-card--copy" disabled={!token} aria-label={`초대 링크 복사하기: ${url}`} onClick={() => token && copyInvite(token, showToast)}>
+            <span className="pp-card__label">초대 링크</span>
+            <span translate="no" className="block font-receipt text-sm break-all">{url || '…'}</span>
+            <svg className="pp-card__icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <rect x="9" y="9" width="11" height="11" rx="2.5" />
+              <path d="M5 15V6.5A2.5 2.5 0 0 1 7.5 4H15" />
+            </svg>
+          </button>
+          <p className="pp-note">초대 링크는 한 사람만, 24시간 안에 쓸 수 있어요.<br />상대가 연결되면 영수증을 발행할 수 있어요.</p>
         </div>
-        <p className="text-sm text-fade">상대가 연결되면 영수증을 발행할 수 있어요.</p>
-        <Button variant="line" onClick={() => nav({ name: 'desk' })}>우리 방으로 가기</Button>
+        <div className="pp-flow__next space-y-3">
+          <Button variant="line" className="pp-btn pp-btn--white" onClick={() => nav({ name: 'desk' })}>우리 방으로 가기</Button>
+        </div>
       </main>
       {toast}
-    </>
+    </div>
   );
 }

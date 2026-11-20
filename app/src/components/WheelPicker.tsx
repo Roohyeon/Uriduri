@@ -95,18 +95,20 @@ export function WheelColumn({
                 if (center) { setDraft(String(v)); setEditing(true); }
                 else onChange(v);
               }}
-              className={`flex w-full cursor-pointer items-center justify-center hover:text-ink ${center ? 'text-ink' : 'text-fade'}`}
+              // 직접 입력 중에는 가운데 숫자를 숨겨 입력칸 글자와 겹치지 않게 한다
+              className={`flex w-full cursor-pointer items-center justify-center hover:text-ink ${center ? 'text-ink' : 'text-fade'} ${center && editing ? 'invisible' : ''}`}
               style={{
                 height: ROW,
                 scrollSnapAlign: 'center',
                 // 투명도 없이 fade 그대로(종이 위 6.4:1). 먼 칸은 크기로만 줄인다 [03-2차 1.4.3]
                 fontSize: center ? 22 : dist >= 2 ? 16 : 18,
                 fontWeight: center ? 600 : 400,
-                transform: `perspective(300px) rotateX(${Math.max(-50, Math.min(50, (index - i) * 22))}deg)`,
+                // 위아래 칸을 기울여 눌려 보이던 효과는 뺌 — 숫자를 그대로 보여 준다 (2026-11-20 사용자 요청)
               }}
             >
               {v}
-              {center && <span className="ml-0.5 text-sm font-normal">{unit}</span>}
+              {/* 년·월·일은 가운데뿐 아니라 모든 칸에 늘 보인다 (2026-11-20 사용자 요청) */}
+              <span className="ml-0.5 text-sm font-normal">{unit}</span>
             </div>
           );
         })}
@@ -125,7 +127,8 @@ export function WheelColumn({
             onChange={(e) => setDraft(e.target.value.replace(/\D/g, '').slice(0, unit === '년' ? 4 : 2))}
             onBlur={commit}
             onKeyDown={(e) => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') setEditing(false); }}
-            className="block w-full rounded-sm border-2 border-ink bg-paper text-center font-receipt text-xl font-semibold"
+            // 테두리 없이 (2026-11-20 사용자 요청)
+            className="block w-full border-0 bg-transparent text-center font-receipt text-xl font-semibold outline-none"
             style={{ height: ROW }}
           />
         </div>

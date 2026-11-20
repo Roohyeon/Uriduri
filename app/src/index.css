@@ -993,6 +993,79 @@
   .paper-page .pp-mood { transition: none; }
 }
 
+/* ───── 닉네임 · 사귄 날 · 로그인 (2026-11-20 사용자 요청) ─────
+ * 홈과 같은 종이 바탕 + 리퀴드 글래스 (입력칸 · 날짜 휠 · 로그인 단추 · '다음'은 발행 단추와 같은 어두운 유리) */
+.paper-page.pp-flow {
+  --glass-card: rgb(255 255 255 / 0.5);
+  display: flex; flex-direction: column;
+  background: var(--d-paper);
+}
+.paper-page .pp-flow__main { flex: 1; }
+.paper-page .pp-flow__next { margin-top: auto; }
+.paper-page.pp-flow .pp-head { background: none; }
+/* 제목 가운데 + 왼쪽 위 이전 단추 (2026-11-20 사용자 요청) */
+.paper-page .pp-head--center { justify-content: center; min-height: 60px; }
+.paper-page .pp-vcenter { flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 22px; }
+.paper-page .pp-vcenter .pp-title { text-align: center; }
+/* 다음 단추를 왼쪽 위 이전 단추(.pp-close)와 같은 유리색으로 (2026-11-20 사용자 요청) */
+.paper-page .pp-publish--glass,
+.paper-page .pp-publish--glass:disabled {
+  background: var(--glass-fill); color: var(--d-ink);
+  border: 1px solid var(--glass-edge); box-shadow: var(--glass-shine), var(--glass-drop);
+}
+.paper-page .pp-publish--glass:enabled:hover { background: rgb(255 255 255 / 0.7); }
+/* 이름 적기 전(꺼짐)에는 그림자를 연하게, 적으면 진하게 (2026-11-20 사용자 요청) */
+.paper-page .pp-publish--glass:disabled {
+  color: rgb(42 38 34 / 0.4);
+  box-shadow: var(--glass-shine), 0 6px 16px -10px rgb(40 36 60 / 0.18), 0 1px 3px -1px rgb(40 36 60 / 0.08);
+}
+.paper-page .pp-back { position: absolute; left: var(--pad); font-size: 22px; line-height: 1; }
+/* 제목은 손글씨 말고 기본 글꼴 */
+.paper-page .pp-title--plain { font-family: var(--font-body); font-size: 24px; font-weight: 700; text-wrap: balance; }
+.paper-page .pp-lead { margin: -14px 0 0; font-size: 14px; color: var(--d-ink-soft); }
+/* 입력칸 이름표는 원래 글꼴 (발행 화면의 손글씨 이름표 규칙을 되돌림) */
+.paper-page.pp-flow .pp-main label[for] { margin-bottom: 0; font-family: var(--font-body); font-size: 14px; font-weight: 600; line-height: 1.6; }
+
+/* 유리판 */
+.pp-flow :is(.pp-input, .pp-wheel > div, .pp-btn--white) {
+  border: 1px solid var(--glass-edge);
+  background: var(--glass-card);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  box-shadow: var(--glass-shine), var(--glass-drop);
+}
+.paper-page.pp-flow .pp-input { min-height: 48px; border-radius: 16px; }
+.paper-page.pp-flow .pp-input:focus { background: rgb(255 255 255 / 0.72); }
+
+/* 휠: 위아래를 흐리게 지우고, 가운데 선택 띠는 밝은 유리 알약 */
+.paper-page.pp-flow .pp-wheel > div { border-radius: 22px; overflow: hidden; }
+.pp-flow .pp-wheel .wheel-fade { display: none; }
+/* 휠 바탕 상자 없애기 (2026-11-20 사용자 요청) */
+.paper-page.pp-flow .pp-wheel--bare > div { background: none; border: 0; box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; }
+.pp-flow .pp-wheel .wheel {
+  -webkit-mask-image: linear-gradient(180deg, transparent, #000 34%, #000 66%, transparent);
+  mask-image: linear-gradient(180deg, transparent, #000 34%, #000 66%, transparent);
+}
+.pp-flow .pp-wheel .border-y-2 {
+  border: 1px solid var(--glass-edge); border-radius: 14px;
+  background: rgb(255 255 255 / 0.7);
+  box-shadow: var(--glass-shine), 0 4px 12px -6px rgb(40 36 60 / 0.3);
+}
+
+/* 로그인 단추: 유리 알약 (카카오는 브랜드 노랑 + 유리 반짝임) */
+.paper-page .pp-btn {
+  min-height: 54px; border-radius: 999px; font-size: 16px; font-weight: 700;
+  box-shadow: var(--glass-shine), var(--glass-drop);
+  transition: transform 120ms, box-shadow 120ms;
+}
+.paper-page .pp-btn:not(.pp-btn--white) { border: 1px solid rgb(255 255 255 / 0.6); }
+.paper-page .pp-btn--white { color: var(--d-ink); }
+.paper-page .pp-btn--white:enabled:hover { background: #ececec; } /* 호버가 잘 보이게 회색 (2026-11-20 사용자 요청) */
+.paper-page .pp-btn:enabled:active { transform: scale(0.97); box-shadow: var(--glass-shine); }
+@media (prefers-reduced-motion: reduce) {
+  .paper-page .pp-btn { transition: none; }
+}
+
 /* 가운데 + : 누르면 위쪽 부채꼴로 메뉴가 펼쳐진다 (Radial Menu) */
 .diary .radial { position: relative; display: grid; place-items: center; }
 .diary .radial__toggle svg { transition: transform 220ms cubic-bezier(0.3, 1.4, 0.5, 1); }
@@ -1363,3 +1436,47 @@
 
 /* ── 편집 화면: 아래 가운데 '스타일' 단추 ── */
 .diary .edit-handle--style { left: 50%; bottom: -15px; margin-left: -15px; }
+
+/* 로그인 화면 약관 안내·푸터: 작은 회색 글자 (2026-11-20 사용자 요청) */
+.paper-page .pp-legal { margin: 0; color: #707070; } /* 종이 바탕 대비 4.8:1 [03-1.4.3] */
+/* 로그인 화면 다듬기 (2026-11-20 사용자 요청) */
+/* 흰 테두리 글자 모양을 따라 그림자가 지도록 filter 사용 (text-shadow는 흰 테두리에 묻혀 안 보였음) */
+.paper-page .pp-logo { display: inline-block; filter: drop-shadow(0 2px 4px rgb(40 36 60 / 0.22)); }
+/* 흰 테두리를 동글동글하게: 각진 text-stroke 대신 흰 글자 그림자를 원 모양으로 16겹 둘러 그린다 (2026-11-20 사용자 요청) */
+.paper-page .pp-logo { -webkit-text-stroke: 0; text-shadow: 3.50px 0.00px 0 #fff, 3.23px 1.34px 0 #fff, 2.47px 2.47px 0 #fff, 1.34px 3.23px 0 #fff, 0.00px 3.50px 0 #fff, -1.34px 3.23px 0 #fff, -2.47px 2.47px 0 #fff, -3.23px 1.34px 0 #fff, -3.50px 0.00px 0 #fff, -3.23px -1.34px 0 #fff, -2.47px -2.47px 0 #fff, -1.34px -3.23px 0 #fff, -0.00px -3.50px 0 #fff, 1.34px -3.23px 0 #fff, 2.47px -2.47px 0 #fff, 3.23px -1.34px 0 #fff; }
+.paper-page .pp-legal--consent { font-size: 14px; line-height: 1.5; text-wrap: balance; word-break: keep-all; padding-bottom: 10px; } /* 아래 단추와 간격: margin은 위아래 여백이 겹쳐 사라져서 padding으로 */
+/* 카카오·구글 단추 그림자를 연하게 */
+.paper-page.pp-flow .pp-btn { box-shadow: var(--glass-shine), 0 6px 16px -10px rgb(40 36 60 / 0.22), 0 1px 3px -1px rgb(40 36 60 / 0.1); }
+/* 제목 아래 설명: 가운데 정렬 회색 (우리 방 만들기, 2026-11-20) */
+.paper-page .pp-sub { margin: -10px 0 0; text-align: center; font-size: 16px; color: var(--d-ink-soft); text-wrap: balance; word-break: keep-all; }
+/* 지난번 로그인 말풍선: 단추 윗변에 살짝 걸쳐 뜨는 흰 말풍선 + 아래 꼬리 (2026-11-20 사용자 요청) */
+/* 단추 윗선에 살짝 걸쳐 뜬다 (2026-11-20 사용자 요청으로 처음 위치로 되돌림) */
+.paper-page .pp-bubble {
+  position: absolute; z-index: 1; left: 50%; bottom: calc(100% - 5px); transform: translateX(-50%);
+  margin: 0; padding: 7px 18px; white-space: nowrap;
+  border-radius: 999px; background: #fff; color: var(--d-ink);
+  font-size: 12px; line-height: 1.4;
+  box-shadow: 0 4px 12px -4px rgb(40 36 60 / 0.25), 0 0 0 1px rgb(40 36 60 / 0.06);
+  pointer-events: none;
+}
+.paper-page .pp-bubble::after {
+  content: ""; position: absolute; left: 50%; top: 100%; margin-left: -6px;
+  border: 6px solid transparent; border-top-color: #fff; border-bottom: 0;
+}
+/* 입력칸을 눌렀을 때: 진한 테두리 대신 하얗게 밝아지고 바깥에 연한 빛무리 (2026-11-20 사용자 요청) */
+.paper-page.pp-flow .pp-input:focus,
+.paper-page.pp-flow .pp-input:focus-visible {
+  outline: none;
+  background: rgb(255 255 255 / 0.9);
+  box-shadow: var(--glass-shine), 0 0 0 4px rgb(42 38 34 / 0.1), var(--glass-drop);
+}
+/* 방 만들기 완료: 초대 링크 유리 카드와 작은 안내 (2026-11-20) */
+.paper-page.pp-flow .pp-card { padding: 14px 18px; border-radius: 16px; }
+.paper-page .pp-card__label { margin: 0 0 4px; font-size: 13px; font-weight: 600; color: var(--d-ink-soft); }
+.paper-page .pp-note { margin: -8px 0 0; text-align: center; font-size: 13px; line-height: 1.6; color: var(--d-ink-soft); word-break: keep-all; }
+.paper-page .pp-card--copy { position: relative; display: block; width: 100%; padding-right: 48px; text-align: left; color: var(--d-ink); cursor: pointer; transition: transform 120ms; }
+.paper-page .pp-card--copy:enabled:hover { background: rgb(255 255 255 / 0.85); }
+.paper-page .pp-card--copy:enabled:active { transform: scale(0.98); }
+.paper-page .pp-card--copy .pp-card__label { display: block; }
+.paper-page .pp-card__icon { position: absolute; top: 14px; right: 16px; color: var(--d-ink-soft); }
+@media (prefers-reduced-motion: reduce) { .paper-page .pp-card--copy { transition: none; } }
