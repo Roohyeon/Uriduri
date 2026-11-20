@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import type { IsoDate } from '../../lib/dates';
 import { LIST_NAMES, type ListItem, type ListKind } from './pieces';
 import { frameStyleOf, type FrameStyle, type ListStyle, type MemoStyle } from './styles';
@@ -46,12 +46,16 @@ export function MemoCard({ text, style, interactive = false }: { text: string; s
 
 /* ───────────── 버킷리스트 · 투두리스트 ───────────── */
 
-export function ListCard({ kind, style, items, onToggle, onToggleDay }: {
+export function ListCard({ kind, style, items, onToggle, onToggleDay, renderText, year }: {
   kind: ListKind; style: ListStyle; items: ListItem[];
+  /** 있으면 제목 앞에 붙인 해 (화면에 붙은 버킷리스트만) */
+  year?: number;
   onToggle?: (i: number) => void; onToggleDay?: (i: number, day: number) => void;
+  /** 쓰기 화면: 항목 글자 자리에 입력칸을 넣는다 (그 디자인 그대로 바로 쓰기, 2026-11-20) */
+  renderText?: (i: number) => ReactNode;
 }) {
   const done = items.filter((i) => i.done).length;
-  const title = LIST_NAMES[kind];
+  const title = year ? `${year} ${LIST_NAMES[kind]}` : LIST_NAMES[kind];
   const today = todayIndex();
 
   const head = (() => {
@@ -107,7 +111,7 @@ export function ListCard({ kind, style, items, onToggle, onToggleDay }: {
             const days = it.days ?? [];
             return (
               <span key={i} role="listitem" className="wl__item">
-                <span className="wl__text">{it.text}</span>
+                <span className="wl__text">{renderText ? renderText(i) : it.text}</span>
                 <span className="wl__dots">
                   {WEEK.map((w, d) =>
                     onToggleDay ? (
@@ -123,7 +127,7 @@ export function ListCard({ kind, style, items, onToggle, onToggleDay }: {
           const inner = (
             <>
               <span className="wl__box" aria-hidden="true">{mark(it)}</span>
-              <span className="wl__text">{it.text}</span>
+              <span className="wl__text">{renderText ? renderText(i) : it.text}</span>
               {style === 'passport' && it.done && <span className="wl__stamp" aria-hidden="true">DONE</span>}
               {style === 'ticket' && <span className="wl__punch" aria-hidden="true" />}
             </>

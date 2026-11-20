@@ -1,4 +1,4 @@
-import { cloneElement, isValidElement, useCallback, useEffect, useRef, useState, type ButtonHTMLAttributes, type ReactNode } from 'react';
+import { cloneElement, isValidElement, useCallback, useEffect, useRef, useState, type ButtonHTMLAttributes, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react';
 
 type Variant = 'ink' | 'seal' | 'line' | 'kakao' | 'google';
 
@@ -115,7 +115,23 @@ const FOCUSABLE = 'button:not([disabled]), [href], input:not([disabled]), select
  * - Esc나 바깥을 누르면 닫히고, 닫히면 열었던 버튼으로 초점이 돌아간다
  * - 버튼 순서 규칙 [02-6]: 위 = 안전한 행동(채움), 아래 = 위험한 행동
  */
-export function Sheet({ title, children, onClose }: { title: string; children: ReactNode; onClose: () => void }) {
+/** 아래 창 제목. onBack이 있으면 왼쪽에 < 되돌아가기 단추 (2026-11-20 사용자 요청) */
+function SheetTitle({ title, onBack }: { title: string; onBack?: () => void }) {
+  return (
+    <div className="flex items-center gap-1">
+      {onBack && (
+        <button type="button" onClick={onBack} aria-label="이전으로 돌아가기" className="sheet-back -ml-2 grid size-10 shrink-0 place-items-center rounded-full text-2xl leading-none">
+          <span aria-hidden="true">‹</span>
+        </button>
+      )}
+      <h2 id="sheet-title" className="text-lg font-bold text-balance">
+        {title}
+      </h2>
+    </div>
+  );
+}
+
+export function Sheet({ title, children, onClose, onBack, className = '', grabber = false }: { title: string; children: ReactNode; onClose: () => void; onBack?: () => void; className?: string; grabber?: boolean }) {
   const box = useRef<HTMLDivElement>(null);
   const close = useRef(onClose);
   close.current = onClose;
@@ -141,6 +157,32 @@ export function Sheet({ title, children, onClose }: { title: string; children: R
     };
   }, []);
 
+  // 손잡이(아이폰 시트의 가로 막대)를 잡고 아래로 끌면 닫힌다. 덜 끌면 제자리로 (2026-11-20 사용자 요청)
+  const drag = useRef<{ y: number; dy: number } | null>(null);
+  const onGrabDown = (e: ReactPointerEvent) => {
+    drag.current = { y: e.clientY, dy: 0 };
+    e.currentTarget.setPointerCapture(e.pointerId);
+    if (box.current) box.current.style.transition = 'none';
+  };
+  const onGrabMove = (e: ReactPointerEvent) => {
+    if (!drag.current || !box.current) return;
+    drag.current.dy = Math.max(0, e.clientY - drag.current.y);
+    box.current.style.transform = `translateY(${drag.current.dy}px)`;
+  };
+  const onGrabUp = () => {
+    const el = box.current;
+    const dy = drag.current?.dy ?? 0;
+    drag.current = null;
+    if (!el) return;
+    el.style.transition = 'transform 200ms ease';
+    if (dy > 90) {
+      el.style.transform = 'translateY(100%)';
+      window.setTimeout(() => close.current(), 180);
+    } else {
+      el.style.transform = '';
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-40 flex items-end bg-ink/50" onClick={onClose}>
       <div
@@ -149,14 +191,34 @@ export function Sheet({ title, children, onClose }: { title: string; children: R
         aria-modal="true"
         aria-labelledby="sheet-title"
         tabIndex={-1}
-        className="sheet-box mx-auto max-h-[90vh] w-full max-w-md overflow-y-auto overflow-x-hidden overscroll-contain bg-paper px-4 pt-6 outline-none"
-        style={{ paddingBottom: 'calc(2rem + env(safe-area-inset-bottom))' }}
+        className={
+          grabber
+            ? // 손잡이·제목은 위에 고정, 아래 내용만 스크롤 (스크롤해도 제목이 내려가지 않게)
+              `sheet-box ${className} mx-auto flex max-h-[90vh] w-full max-w-md flex-col overflow-hidden bg-paper outline-none`
+            : `sheet-box ${className} mx-auto max-h-[90vh] w-full max-w-md overflow-y-auto overflow-x-hidden overscroll-contain bg-paper px-4 pt-6 outline-none`
+        }
+        style={grabber ? undefined : { paddingBottom: 'calc(2rem + env(safe-area-inset-bottom))' }}
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 id="sheet-title" className="text-lg font-bold text-balance">
-          {title}
-        </h2>
-        <div className="mt-2 space-y-3">{children}</div>
+        {grabber ? (
+          <>
+            <div className="sheet-grab" onPointerDown={onGrabDown} onPointerMove={onGrabMove} onPointerUp={onGrabUp} onPointerCancel={onGrabUp}>
+              <span className="sheet-grab__bar" aria-hidden="true" />
+              <SheetTitle title={title} onBack={onBack} />
+            </div>
+            <div
+              className="min-h-0 flex-1 space-y-3 overflow-y-auto overflow-x-hidden overscroll-contain px-4 pt-2"
+              style={{ paddingBottom: 'calc(2rem + env(safe-area-inset-bottom))' }}
+            >
+              {children}
+            </div>
+          </>
+        ) : (
+          <>
+            <SheetTitle title={title} onBack={onBack} />
+            <div className="mt-2 space-y-3">{children}</div>
+          </>
+        )}
       </div>
     </div>
   );

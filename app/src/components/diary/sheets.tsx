@@ -1,13 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Button, Field, Sheet, inputClass } from '../ui';
 import { countChars } from '../../lib/text';
-import { ARTS, ArtBody, ITEM_MAX, LINE_MAX, LIST_ITEMS, LIST_NAMES, MAX_LINES, MEMO_MAX, TEXT_COLORS, TEXT_FONTS, TEXT_MAX, clampText, fontOf, type ArtId, type ListItem, type ListKind, type TextFontId } from './pieces';
-import { WidgetPreview, type WidgetKind } from './widgets';
-import { BUCKET_STYLES, FRAME_STYLES, MEMO_STYLES, TODO_STYLES } from './styles';
-
-/** 고르는 칸 (라디오) 공통 모양: 고르면 진한 테두리, 키보드 초점도 보이게 */
-const choice =
-  'cursor-pointer rounded-sm border border-rule bg-frame has-[:checked]:border-ink has-[:checked]:ring-2 has-[:checked]:ring-ink has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2';
+import { ARTS, ArtBody, ITEM_MAX, LINE_MAX, LIST_ITEMS, LIST_NAMES, MAX_LINES, MEMO_MAX, TEXT_COLORS, TEXT_FONTS, TEXT_MAX, clampText, fontOf, type ArtId, type TextAlign, type TextLook, type ListItem, type ListKind, type TextFontId } from './pieces';
+import { ListCard, WidgetPreview, type WidgetKind } from './widgets';
+import { BUCKET_STYLES, FRAME_STYLES, MEMO_STYLES, TODO_STYLES, type ListStyle } from './styles';
 
 /** 스티커 붙이기: 스티커만 늘어놓는다 (이름·바탕 없이). 마지막 '텍스트'는 글씨 스티커 쓰기로 */
 const pick = 'grid h-24 w-full min-w-0 place-items-center overflow-hidden rounded-lg transition-transform active:scale-90 focus-visible:outline-2 focus-visible:outline-offset-2';
@@ -17,7 +14,7 @@ export function StickerPicker({ onPick, onWrite, onClose, hiddenWidgets = [], on
   hiddenWidgets?: { id: string; name: string }[]; onRestore?: (id: string) => void;
 }) {
   return (
-    <Sheet title="스티커 붙이기" onClose={onClose}>
+    <Sheet title="스티커 붙이기" onClose={onClose} className="sheet-box--glass" grabber>
       {hiddenWidgets.length > 0 && (
         <ul className="flex flex-wrap gap-2" aria-label="뗀 위젯 다시 붙이기">
           {hiddenWidgets.map((w) => (
@@ -51,68 +48,257 @@ export function StickerPicker({ onPick, onWrite, onClose, hiddenWidgets = [], on
   );
 }
 
-export type TextInput = { text: string; font: TextFontId; color: string };
+export type TextInput = { text: string; font: TextFontId; color: string } & TextLook;
 
-/** 글씨 스티커 쓰기·고치기 창 */
+/** 화면에 보이는 영역(키보드를 뺀 높이)을 따라간다 — 도구 줄을 키보드 바로 위에 붙이려고 */
+function useVisibleViewport() {
+  const [box, setBox] = useState(() => ({ top: 0, height: window.innerHeight }));
+  useEffect(() => {
+    const vv = window.visualViewport;
+    const update = () => setBox(vv ? { top: vv.offsetTop, height: vv.height } : { top: 0, height: window.innerHeight });
+    update();
+    vv?.addEventListener('resize', update);
+    vv?.addEventListener('scroll', update);
+    window.addEventListener('resize', update);
+    return () => {
+      vv?.removeEventListener('resize', update);
+      vv?.removeEventListener('scroll', update);
+      window.removeEventListener('resize', update);
+    };
+  }, []);
+  return box;
+}
+
+/** 글씨 테두리 미리보기: 입력칸에서는 text-stroke 대신 둥글게 두른 글자 그림자로 그린다 */
+const strokeShadow = (c: string) =>
+  c === 'none'
+    ? undefined
+    : Array.from({ length: 12 }, (_, i) => {
+        const a = (Math.PI * 2 * i) / 12;
+        return `${(3 * Math.cos(a)).toFixed(2)}px ${(3 * Math.sin(a)).toFixed(2)}px 0 ${c}`;
+      }).join(', ');
+
+const ALIGNS: { v: TextAlign; name: string }[] = [
+  { v: 'center', name: '가운데 정렬' },
+  { v: 'left', name: '왼쪽 정렬' },
+  { v: 'right', name: '오른쪽 정렬' },
+];
+
+/** 글자 색 팔레트 (2026-11-20 사용자 요청: 색 여러 개) */
+const PALETTE = [
+  { v: '#2a2622', name: '검정' },
+  { v: '#ffffff', name: '흰색' },
+  { v: '#8a8580', name: '회색' },
+  { v: '#c93a2b', name: '빨강' },
+  { v: '#ef7d32', name: '주황' },
+  { v: '#f2c230', name: '노랑' },
+  { v: '#2f8a57', name: '초록' },
+  { v: '#3aa6c9', name: '하늘' },
+  { v: '#2f5fb3', name: '파랑' },
+  { v: '#6a4bb3', name: '보라' },
+  { v: '#e86a9a', name: '분홍' },
+  { v: '#8a5a3c', name: '갈색' },
+] as const;
+
+/** 정렬 아이콘: 가로줄 세 개 */
+function AlignIcon({ align }: { align: TextAlign }) {
+  const x = (w: number) => (align === 'left' ? 4 : align === 'right' ? 20 - w : 12 - w / 2);
+  return (
+    <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+      <line x1={x(16)} x2={x(16) + 16} y1="7" y2="7" />
+      <line x1={x(10)} x2={x(10) + 10} y1="12" y2="12" />
+      <line x1={x(14)} x2={x(14) + 14} y1="17" y2="17" />
+    </svg>
+  );
+}
+
+/** 스포이드 아이콘 */
+function DropperIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M14.5 5.5l4 4" />
+      <path d="M17.6 3.4a2 2 0 0 1 2.9 2.9l-2.3 2.3-2.9-2.9z" />
+      <path d="M15.3 8.6L6.8 17.1 4 20l2.9-2.8 8.5-8.5" />
+    </svg>
+  );
+}
+
+type Tool = 'font' | 'color' | 'stroke' | 'align' | 'style';
+
+/** EyeDropper(크롬 등)만 있는 화면 색 집기. 없는 브라우저는 색 고르기 창으로 대신한다 */
+type EyeDropperCtor = new () => { open: () => Promise<{ sRGBHex: string }> };
+
+/**
+ * 글씨 스티커 쓰기·고치기 (2026-11-20 사용자 요청으로 구성 변경)
+ * - 입력칸 없이 검은 반투명 바탕 위에 바로 쓴다. 열리면 바로 커서가 깜빡인다
+ * - 아래 도구 줄: Aa(글꼴) | 무지개 팔레트(색) | 정렬 | BIU(굵게·기울이기·밑줄). 누르면 배경이 칠해지고 그 위에 고를 것들이 뜬다
+ * - 키보드가 올라오면 도구 줄이 키보드 바로 위에 붙는다. 취소·붙이기는 위에 있어 가리지 않는다
+ */
 export function TextComposer({ initial, onDone, onClose }: { initial?: TextInput; onDone: (t: TextInput) => void; onClose: () => void }) {
   const [text, setText] = useState(initial?.text ?? '');
   const [font, setFont] = useState<TextFontId>(initial?.font ?? 'omiri');
   const [color, setColor] = useState<string>(initial?.color ?? TEXT_COLORS[0].v);
+  const [align, setAlign] = useState<TextAlign>(initial?.align ?? 'center');
+  const [bold, setBold] = useState(!!initial?.bold);
+  const [italic, setItalic] = useState(!!initial?.italic);
+  const [underline, setUnderline] = useState(!!initial?.underline);
+  const [stroke, setStroke] = useState<string>(initial?.stroke ?? '#ffffff'); // 테두리 색, 'none'은 없음
+  const [tool, setTool] = useState<Tool>();
+  const vv = useVisibleViewport();
+  const area = useRef<HTMLTextAreaElement>(null);
+  const picker = useRef<HTMLInputElement>(null);
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
   const f = fontOf(font);
   const clean = text.trim();
-  return (
-    <Sheet title={initial ? '글씨 고치기' : '글씨 붙이기'} onClose={onClose}>
-      <form
-        className="space-y-4"
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (clean) onDone({ text: clean, font, color });
-        }}
-      >
-        <Field id="text-sticker" label="쓸 말" hint={`${countChars(text)}/${TEXT_MAX}자 · 줄바꿈 ${MAX_LINES}줄까지`}>
-          <textarea
-            id="text-sticker"
-            rows={2}
-            className={`${inputClass} resize-none`}
-            value={text}
-            placeholder="오늘 하고 싶은 말"
-            onChange={(e) => setText(clampText(e.target.value, TEXT_MAX))}
-          />
-        </Field>
+  const done = () => { if (clean) onDone({ text: clean, font, color, align, bold, italic, underline, stroke }); };
 
-        <fieldset>
-          <legend className="text-sm font-semibold">글꼴</legend>
-          <div className="mt-1 grid gap-2">
+  useEffect(() => {
+    const opener = document.activeElement as HTMLElement | null;
+    area.current?.focus({ preventScroll: true });
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.preventDefault(); closeRef.current(); } };
+    document.addEventListener('keydown', onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.body.style.overflow = prev;
+      opener?.focus?.();
+    };
+  }, []);
+
+  // 글이 길어 줄이 넘어가면 쓰는 칸 높이를 글에 맞춘다
+  useEffect(() => {
+    const el = area.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${el.scrollHeight}px`;
+  }, [text, font, bold, italic, underline, align]);
+
+  // 도구를 눌러도 쓰는 칸 초점(= 키보드·커서)이 내려가지 않게
+  const keep = (e: { preventDefault: () => void; target: EventTarget }) => {
+    if ((e.target as HTMLElement).closest('input')) return;
+    e.preventDefault();
+  };
+  const toggle = (t: Tool) => setTool((cur) => (cur === t ? undefined : t));
+
+  const pickFromScreen = async () => {
+    const ED = (window as unknown as { EyeDropper?: EyeDropperCtor }).EyeDropper;
+    if (ED) {
+      try { setColor((await new ED().open()).sRGBHex); } catch { /* 취소 */ }
+      area.current?.focus({ preventScroll: true });
+    } else {
+      picker.current?.click();
+    }
+  };
+  const custom = !PALETTE.some((c) => c.v.toLowerCase() === color.toLowerCase());
+  const lines = Math.min(MAX_LINES, Math.max(1, text.split('\n').length));
+  const alignName = ALIGNS.find((a) => a.v === align)!.name;
+
+  return createPortal(
+    <div className="tc" role="dialog" aria-modal="true" aria-label={initial ? '글씨 고치기' : '글씨 붙이기'} style={{ top: vv.top, height: vv.height }}>
+      <div className="tc__top">
+        <button type="button" className="tc__btn" onClick={onClose}>취소</button>
+        <span className="tc__count" aria-hidden="true">{countChars(text)}/{TEXT_MAX}</span>
+        <button type="button" className="tc__btn tc__btn--done" disabled={!clean} onClick={done}>{initial ? '고치기' : '붙이기'}</button>
+      </div>
+
+      <div className="tc__stage" onClick={() => area.current?.focus()}>
+        <textarea
+          ref={area}
+          autoFocus
+          aria-label={`쓸 말, ${TEXT_MAX}자, 줄바꿈 ${MAX_LINES}줄까지`}
+          rows={lines}
+          className="tc__text"
+          value={text}
+          spellCheck={false}
+          onChange={(e) => setText(clampText(e.target.value, TEXT_MAX))}
+          style={{
+            textAlign: align, fontFamily: f.family, fontWeight: bold ? 800 : f.weight, fontStyle: italic ? 'italic' : 'normal',
+            textDecoration: underline ? 'underline' : 'none',
+            fontSize: f.size * 1.3, color, textShadow: strokeShadow(stroke),
+          }}
+        />
+      </div>
+
+      <div className="tc__tools" onPointerDown={keep} onMouseDown={keep}>
+        {/* 고른 도구의 선택지: 도구 줄 바로 위에 뜬다 */}
+        {tool === 'font' && (
+          <div className="tc__row" role="group" aria-label="글꼴">
             {TEXT_FONTS.map((x) => (
-              <label key={x.id} className={`flex min-h-12 items-center justify-between gap-3 px-3 py-1.5 ${choice}`}>
-                <input type="radio" name="text-font" value={x.id} checked={font === x.id} onChange={() => setFont(x.id)} className="sr-only" />
-                <span style={{ fontFamily: x.family, fontWeight: x.weight, fontSize: x.size - 4 }} aria-hidden="true">{clean || '우리두리'}</span>
-                <span className="shrink-0 text-xs text-fade">{x.name}</span>
-              </label>
+              <button key={x.id} type="button" className="tc__chip" aria-pressed={font === x.id} aria-label={x.name} onClick={() => setFont(x.id)}>
+                <span style={{ fontFamily: x.family, fontWeight: x.weight, fontSize: x.size - 8 }} aria-hidden="true">가나다</span>
+              </button>
             ))}
           </div>
-        </fieldset>
-
-        <fieldset>
-          <legend className="text-sm font-semibold">색</legend>
-          <div className="mt-1 flex gap-2">
-            {TEXT_COLORS.map((c) => (
-              <label key={c.v} className={`grid size-11 place-items-center rounded-full ${choice}`}>
-                <input type="radio" name="text-color" value={c.v} checked={color === c.v} onChange={() => setColor(c.v)} className="sr-only" />
-                <span aria-hidden="true" className="size-6 rounded-full" style={{ background: c.v }} />
-                <span className="sr-only">{c.name}</span>
-              </label>
+        )}
+        {tool === 'color' && (
+          <div className="tc__row" role="group" aria-label="글자 색">
+            <button type="button" className="tc__icon" aria-label="스포이드로 색 집기" onClick={pickFromScreen}><DropperIcon /></button>
+            <input ref={picker} type="color" className="sr-only" tabIndex={-1} aria-hidden="true" value={/^#[0-9a-f]{6}$/i.test(color) ? color : '#000000'} onChange={(e) => setColor(e.target.value)} />
+            {custom && (
+              <button type="button" className="tc__swatch" aria-pressed="true" aria-label="집은 색">
+                <span aria-hidden="true" style={{ background: color }} />
+              </button>
+            )}
+            {PALETTE.map((c) => (
+              <button key={c.v} type="button" className="tc__swatch" aria-pressed={color.toLowerCase() === c.v} aria-label={c.name} onClick={() => setColor(c.v)}>
+                <span aria-hidden="true" style={{ background: c.v }} />
+              </button>
             ))}
           </div>
-        </fieldset>
+        )}
+        {tool === 'stroke' && (
+          <div className="tc__row" role="group" aria-label="테두리 색">
+            <button type="button" className="tc__swatch" aria-pressed={stroke === 'none'} aria-label="테두리 없음" onClick={() => setStroke('none')}>
+              <span aria-hidden="true" className="tc__none" />
+            </button>
+            {PALETTE.map((c) => (
+              <button key={c.v} type="button" className="tc__swatch" aria-pressed={stroke.toLowerCase() === c.v} aria-label={`${c.name} 테두리`} onClick={() => setStroke(c.v)}>
+                <span aria-hidden="true" style={{ background: c.v }} />
+              </button>
+            ))}
+          </div>
+        )}
+        {tool === 'align' && (
+          <div className="tc__row" role="group" aria-label="정렬">
+            {ALIGNS.map((a) => (
+              <button key={a.v} type="button" className="tc__icon" aria-pressed={align === a.v} aria-label={a.name} onClick={() => setAlign(a.v)}>
+                <AlignIcon align={a.v} />
+              </button>
+            ))}
+          </div>
+        )}
+        {tool === 'style' && (
+          <div className="tc__row" role="group" aria-label="글자 모양">
+            <button type="button" className="tc__icon" aria-pressed={bold} aria-label="굵게" onClick={() => setBold(!bold)}><b aria-hidden="true">B</b></button>
+            <button type="button" className="tc__icon" aria-pressed={italic} aria-label="기울이기" onClick={() => setItalic(!italic)}><i aria-hidden="true" style={{ fontFamily: 'serif' }}>I</i></button>
+            <button type="button" className="tc__icon" aria-pressed={underline} aria-label="밑줄" onClick={() => setUnderline(!underline)}><u aria-hidden="true">U</u></button>
+          </div>
+        )}
 
-        <div aria-hidden="true" className="grid min-h-20 place-items-center rounded-sm border border-dashed border-rule bg-frame px-3 py-2 text-center whitespace-pre-wrap">
-          <span style={{ fontFamily: f.family, fontWeight: f.weight, fontSize: f.size, color, lineHeight: 1.15 }}>{clean || '미리 보기'}</span>
+        {/* 도구 줄: Aa | 무지개 팔레트 | 테두리 | 정렬 | BIU */}
+        <div className="tc__row tc__row--main" role="toolbar" aria-label="글씨 꾸미기">
+          <button type="button" className="tc__tab" aria-expanded={tool === 'font'} aria-label="글꼴" onClick={() => toggle('font')}>
+            <span aria-hidden="true" className="tc__aa">Aa</span>
+          </button>
+          <button type="button" className="tc__tab" aria-expanded={tool === 'color'} aria-label="색" onClick={() => toggle('color')}>
+            <span aria-hidden="true" className="tc__rainbow"><span style={{ background: color }} /></span>
+          </button>
+          {/* 테두리 색 (2026-11-20 사용자 요청) */}
+          <button type="button" className="tc__tab" aria-expanded={tool === 'stroke'} aria-label="테두리" onClick={() => toggle('stroke')}>
+            <span aria-hidden="true" className="tc__outline">A</span>
+          </button>
+          <button type="button" className="tc__tab" aria-expanded={tool === 'align'} aria-label={`정렬, 지금 ${alignName}`} onClick={() => toggle('align')}>
+            <AlignIcon align={align} />
+          </button>
+          <button type="button" className="tc__tab" aria-expanded={tool === 'style'} aria-label="굵게·기울이기·밑줄" onClick={() => toggle('style')}>
+            <span aria-hidden="true" className="tc__biu"><b>B</b><i>I</i><u>U</u></span>
+          </button>
         </div>
-
-        <Button type="submit" disabled={!clean}>{initial ? '고치기' : '붙이기'}</Button>
-      </form>
-    </Sheet>
+      </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -185,7 +371,7 @@ const WIDGET_KINDS: { kind: PickKind; name: string }[] = [
 /** 위젯 붙이기: 위젯 그림만 스티커처럼 (이름·바탕 없이) */
 export function WidgetPicker({ onPick, onClose }: { onPick: (k: PickKind) => void; onClose: () => void }) {
   return (
-    <Sheet title="위젯 붙이기" onClose={onClose}>
+    <Sheet title="위젯 붙이기" onClose={onClose} className="sheet-box--glass" grabber>
       <ul className="grid grid-cols-2 gap-3">
         {WIDGET_KINDS.map((w) => (
           <li key={w.kind}>
@@ -226,10 +412,10 @@ const STYLE_LISTS: Record<WidgetKind, { list: readonly { id: string; name: strin
 };
 
 /** 스타일 고르기: 위젯을 고른 다음, 또는 편집 화면의 '스타일' 단추. 그림만 (이름은 화면 낭독기로) */
-export function StylePicker({ kind, current, onPick, onClose }: { kind: WidgetKind; current?: string; onPick: (style: string) => void; onClose: () => void }) {
+export function StylePicker({ kind, current, onPick, onClose, onBack }: { kind: WidgetKind; current?: string; onPick: (style: string) => void; onClose: () => void; onBack?: () => void }) {
   const { list, name } = STYLE_LISTS[kind];
   return (
-    <Sheet title={current ? `${name} 스타일 바꾸기` : `${name} 고르기`} onClose={onClose}>
+    <Sheet title={current ? `${name} 스타일 바꾸기` : `${name} 고르기`} onClose={onClose} onBack={onBack} className="sheet-box--glass" grabber>
       <ul className={`grid gap-3 ${kind === 'frame' ? 'grid-cols-3' : 'grid-cols-2'}`}>
         {list.map((st) => (
           <li key={st.id}>
@@ -240,7 +426,15 @@ export function StylePicker({ kind, current, onPick, onClose }: { kind: WidgetKi
               aria-label={st.name}
               aria-pressed={current ? current === st.id : undefined}
             >
-              <span className="style-pick__art" aria-hidden="true"><WidgetPreview kind={kind} style={st.id} /></span>
+              <span className="style-pick__art" aria-hidden="true">
+                <WidgetPreview kind={kind} style={st.id} />
+                {/* 투두리스트: 지금 스타일은 카드 바깥을 두르는 아이 그림 같은 빨간 점선 (카드 위를 지나가지 않게, 2026-11-20) */}
+                {kind === 'todo' && current === st.id && (
+                  <svg className="style-pick__doodle" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+                    <path vectorEffect="non-scaling-stroke" d="M10 12.2 C24 5.9 46 10.1 66 6.6 C80 4.5 96 8 93.3 22 C96.1 38 90.5 52 94.7 70 C96.8 84 90 96 72 92.3 C54 95.8 36 90.2 18 94.4 C6 97 3.9 86 6.7 70 C3.2 54 8.8 40 4.6 26 C3.9 20 5.3 16 10 12.2" />
+                  </svg>
+                )}
+              </span>
             </button>
           </li>
         ))}
@@ -249,34 +443,65 @@ export function StylePicker({ kind, current, onPick, onClose }: { kind: WidgetKi
   );
 }
 
-/** 버킷리스트·투두리스트 쓰기·고치기: 한 줄에 하나씩. 고칠 때 같은 항목의 체크는 그대로 */
-export function ListComposer({ kind, initial, onDone, onClose }: { kind: ListKind; initial?: ListItem[]; onDone: (items: ListItem[]) => void; onClose: () => void }) {
-  const [text, setText] = useState((initial ?? []).map((i) => i.text).join('\n'));
-  const rows = text.split('\n').map((t) => t.trim()).filter(Boolean);
-  const clip = (v: string) => v.split('\n').slice(0, LIST_ITEMS).map((l) => [...l].slice(0, ITEM_MAX).join('')).join('\n');
+/**
+ * 버킷리스트·투두리스트 쓰기·고치기: 고른 디자인 그대로 위에서 바로 쓴다 (2026-11-20 사용자 요청)
+ * 항목마다 입력칸, 마지막 빈 칸에 쓰면 다음 칸이 생긴다. Enter로 다음 칸. 고칠 때 같은 항목의 체크는 그대로
+ */
+export function ListComposer({ kind, style, initial, onDone, onClose, onBack }: {
+  kind: ListKind; style: ListStyle; initial?: ListItem[];
+  onDone: (items: ListItem[]) => void; onClose: () => void; onBack?: () => void;
+}) {
+  const [values, setValues] = useState<string[]>(() => (initial ?? []).map((i) => i.text));
+  const refs = useRef<(HTMLInputElement | null)[]>([]);
+  const rows = values.map((t) => t.trim()).filter(Boolean);
+  // 빈 칸 하나를 늘 끝에 둔다 (최대 개수 전까지)
+  const slots = values.length < LIST_ITEMS ? [...values, ''] : values;
+  const was = new Map((initial ?? []).map((i) => [i.text, i]));
+  const shown: ListItem[] = slots.map((t) => {
+    const old = was.get(t.trim());
+    return { text: t, done: old?.done ?? false, ...(old?.days ? { days: old.days } : {}) };
+  });
+  const setAt = (i: number, v: string) => {
+    const next = [...slots];
+    next[i] = [...v].slice(0, ITEM_MAX).join('');
+    while (next.length && next[next.length - 1] === '') next.pop(); // 끝의 빈 칸은 저장 목록에서 뺀다
+    setValues(next);
+  };
   return (
-    <Sheet title={`${LIST_NAMES[kind]} ${initial ? '고치기' : '쓰기'}`} onClose={onClose}>
+    <Sheet title={`${LIST_NAMES[kind]} ${initial ? '고치기' : '쓰기'}`} onClose={onClose} onBack={onBack}>
       <form
         className="space-y-4"
         onSubmit={(e) => {
           e.preventDefault();
           if (!rows.length) return;
-          const was = new Map((initial ?? []).map((i) => [i.text, i.done]));
-          const days = new Map((initial ?? []).map((i) => [i.text, i.days]));
-          onDone(rows.map((t) => ({ text: t, done: was.get(t) ?? false, ...(days.get(t) ? { days: days.get(t) } : {}) })));
+          onDone(rows.map((t) => {
+            const old = was.get(t);
+            return { text: t, done: old?.done ?? false, ...(old?.days ? { days: old.days } : {}) };
+          }));
         }}
       >
-        <Field id="list-items" label={kind === 'bucket' ? '하고 싶은 것' : '할 일'} hint={`한 줄에 하나씩 · ${rows.length}/${LIST_ITEMS}개 · 하나에 ${ITEM_MAX}자까지`}>
-          <textarea
-            id="list-items"
-            rows={5}
-            className={`${inputClass} resize-none`}
-            value={text}
-            placeholder={kind === 'bucket' ? '제주 여행\n커플링 맞추기\n한강 피크닉' : '영화 예매\n꽃 사 가기'}
-            onChange={(e) => setText(clip(e.target.value))}
+        <div className="list-compose">
+          <ListCard
+            kind={kind}
+            style={style}
+            items={shown}
+            renderText={(i) => (
+              <input
+                ref={(el) => { refs.current[i] = el; }}
+                className="wl__input"
+                value={slots[i]}
+                aria-label={`${i + 1}번째 ${kind === 'bucket' ? '하고 싶은 것' : '할 일'}`}
+                autoFocus={i === 0 && !initial}
+                enterKeyHint="next"
+                onChange={(e) => setAt(i, e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') { e.preventDefault(); refs.current[i + 1]?.focus(); }
+                  if (e.key === 'Backspace' && !slots[i] && i > 0) { e.preventDefault(); refs.current[i - 1]?.focus(); }
+                }}
+              />
+            )}
           />
-        </Field>
-        <p className="text-sm text-fade">붙인 뒤에는 항목을 눌러 체크할 수 있어요.</p>
+        </div>
         <Button type="submit" disabled={!rows.length}>{initial ? '고치기' : '붙이기'}</Button>
       </form>
     </Sheet>

@@ -168,7 +168,13 @@ export function DeskScreen({ session, board, nav }: { session: Session; board: B
       const cells = frameStyleOf(style).cells;
       const frameId = api.add({ type: 'frame', style: style as FrameStyle, photos: Array(cells).fill(null), date: today, dplus: d });
       setOpen({ kind: 'camera', frameId, cell: 0, count: cells });
-    } else setOpen({ kind: 'list', list: widget, style: style as ListStyle });
+    } else {
+      // 버킷·투두: 고른 디자인을 바로 화면에 붙이고 골라 둔다. 한 번 더 누르면 그 자리에서 쓴다 (2026-11-20 사용자 요청)
+      // 버킷리스트는 붙인 해를 제목에 ('2026 버킷리스트')
+      const id = api.add({ type: 'list', kind: widget, items: [], style: style as ListStyle, ...(widget === 'bucket' ? { year: new Date().getFullYear() } : {}) });
+      api.focus(id);
+      close();
+    }
   };
 
   return (
@@ -305,6 +311,7 @@ export function DeskScreen({ session, board, nav }: { session: Session; board: B
           kind={open.widget}
           current={open.change && 'style' in open.change ? (open.change.style as string) : undefined}
           onClose={close}
+          onBack={open.change ? undefined : () => setOpen({ kind: 'widgets' })}
           onPick={(st) => pickStyle(open.widget, st, open.change)}
         />
       )}
@@ -324,8 +331,10 @@ export function DeskScreen({ session, board, nav }: { session: Session; board: B
       {open?.kind === 'list' && (
         <ListComposer
           kind={open.list}
+          style={open.style}
           initial={open.editing?.items}
           onClose={close}
+          onBack={open.editing ? undefined : () => setOpen({ kind: 'style', widget: open.list })}
           onDone={(items) => {
             if (open.editing) decorApi.current?.update(open.editing.id, { items });
             else decorApi.current?.add({ type: 'list', kind: open.list, items, style: open.style });

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent, type KeyboardEvent, type MouseEvent as ReactMouseEvent, type MutableRefObject, type PointerEvent as ReactPointerEvent, type ReactNode, type WheelEvent } from 'react';
 import { photoUrl } from '../../services/diaryPhotos';
-import { ArtBody, artOf, fontOf, loadPieces, newPieceId, pieceLabel, savePieces, type ListItem, type Piece, type PieceInput } from './pieces';
+import { ArtBody, ITEM_MAX, LIST_ITEMS, artOf, fontOf, loadPieces, newPieceId, pieceLabel, savePieces, type ListItem, type Piece, type PieceInput } from './pieces';
 import { FrameCard, ListCard, MemoCard } from './widgets';
 
 /*
@@ -28,6 +28,8 @@ export type DecorApi = {
   showWidget: (id: string) => void;
   hiddenWidgets: () => string[];
   getPiece: (id: string) => Piece | undefined;
+  /** 편집 화면으로 들어가 이 조각을 고른다 (새로 붙인 리스트: 한 번 더 누르면 바로 쓰기) */
+  focus: (id: string) => void;
 };
 
 type Item = { id: string; widget?: WidgetDef; piece?: Piece; home: [number, number]; tilt: number; label: string; cls: string };
@@ -120,6 +122,19 @@ export function DecorBoard({ roomId, me, covered, ready, widgets, api, onEditPie
   const editingRef = useRef(false);
   const [selected, setSelectedState] = useState<string | null>(null);
   const selectedRef = useRef<string | null>(null);
+  // 리스트 위젯을 화면 위에서 바로 쓰는 중 (2026-11-20 사용자 요청)
+  const [writing, setWritingState] = useState<string | null>(null);
+  const writingRef = useRef<string | null>(null);
+  const LIST_MIN_ROWS = 3;
+  // 쓰는 중 보이는 칸 수: 마지막 칸에서 Enter를 누를 때만 한 칸 늘어난다 (2026-11-20 사용자 요청)
+  const [extraRows, setExtraRows] = useState(0);
+  const focusNext = useRef<number | null>(null);
+  useEffect(() => {
+    if (focusNext.current == null) return;
+    inputRefs.current[focusNext.current]?.focus({ preventScroll: true });
+    focusNext.current = null;
+  }, [extraRows]);
+  const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
   const setSelected = (id: string | null) => { selectedRef.current = id; setSelectedState(id); };
   const [active, setActive] = useState<string | null>(null); // 지금 손으로 만지는 중
   const [turning, setTurning] = useState(false); // 돌리는 중: 각도 보여 주기
@@ -207,14 +222,23 @@ export function DecorBoard({ roomId, me, covered, ready, widgets, api, onEditPie
       const el = itemRefs.current[d.id];
       if (el) nextSizes[d.id] = { w: el.offsetWidth, h: el.offsetHeight };
     }
+    const prevSizes = sizesRef.current;
     sizesRef.current = nextSizes;
     setSizes(nextSizes);
     const W = root.clientWidth, H = root.clientHeight;
     const placed: Record<string, Placed> = editingRef.current || gesture.current ? { ...docRef.current.placed } : {};
     let homed = false;
+    const bottomEdge = H - parseFloat(getComputedStyle(root).paddingBottom || '0');
     for (const d of itemsRef.current) {
       const sz = nextSizes[d.id];
-      if (!sz || placed[d.id]) continue; // 편집 중에는 이미 놓인 것은 그대로
+      const cur = placed[d.id];
+      // 편집 중 놓인 것은 그대로 — 단, 크기가 바뀌어(예: 투두 글이 길어져 넓어짐) 화면 밖으로 나가면 같이 안으로 옮긴다 (2026-11-20)
+      if (sz && cur) {
+        const was = prevSizes[d.id];
+        if (was && (was.w !== sz.w || was.h !== sz.h)) placed[d.id] = { ...cur, ...fitBox(cur.x, cur.y, sz.w, sz.h, cur.scale, W, bottomEdge) };
+        continue;
+      }
+      if (!sz) continue;
       const s = saved.current[d.id];
       if (!s && !readyRef.current) continue; // 아직 숨겨 둠
       if (!s) homed = true;
@@ -266,7 +290,29 @@ export function DecorBoard({ roomId, me, covered, ready, widgets, api, onEditPie
     }
     setSelected(id);
   };
+  /** 쓰기를 마치면 빈 항목은 뺀다 */
+  const stopWriting = () => {
+    const id = writingRef.current;
+    if (!id) return;
+    writingRef.current = null;
+    setWritingState(null);
+    const d = docRef.current;
+    const p = d.pieces.find((x) => x.id === id);
+    if (p?.type === 'list' && p.items.some((it) => !it.text.trim())) {
+      commit({ ...d, pieces: d.pieces.map((x) => (x.id === id && x.type === 'list' ? { ...x, items: x.items.filter((it) => it.text.trim()) } : x)) });
+    }
+  };
+  const startWriting = (id: string) => { writingRef.current = id; setWritingState(id); setExtraRows(0); };
+  // 쓰기를 시작할 때 한 번만 첫 빈 칸에 커서를 둔다 (새 칸이 생길 때마다 초점이 옮겨 가던 문제 고침)
+  useEffect(() => {
+    if (!writing) return;
+    const p = docRef.current.pieces.find((x) => x.id === writing);
+    const n = p?.type === 'list' ? p.items.findIndex((it) => !it.text.trim()) : -1;
+    const at = n >= 0 ? n : Math.min(p?.type === 'list' ? p.items.length : 0, LIST_ITEMS - 1);
+    inputRefs.current[at]?.focus({ preventScroll: true });
+  }, [writing]);
   const leaveEdit = () => {
+    stopWriting();
     editingRef.current = false;
     setEditing(false);
     setSelected(null);
@@ -361,6 +407,7 @@ export function DecorBoard({ roomId, me, covered, ready, widgets, api, onEditPie
 
   const onItemDown = (id: string) => (e: ReactPointerEvent<HTMLElement>) => {
     if (e.button !== 0 || gesture.current?.kind === 'pinch') return;
+    if ((e.target as Element).closest?.('input')) return; // 리스트에 쓰는 중: 입력칸은 끌기 대신 글쓰기
     const p = docRef.current.placed[id];
     if (!p) return;
     if (!editingRef.current) {
@@ -428,6 +475,7 @@ export function DecorBoard({ roomId, me, covered, ready, widgets, api, onEditPie
       }
       // 빈 곳을 누르면 고르기 해제 (편집 화면은 그대로)
       const t = e.target as Element;
+      if (writingRef.current && !t.closest?.(`[data-decor-id="${writingRef.current}"]`)) stopWriting();
       if (!t.closest?.('.decor, .edit-frame, .edit-bar, .layer-rail, [role="dialog"]')) setSelected(null);
     };
     const move = (e: PointerEvent) => {
@@ -489,7 +537,9 @@ export function DecorBoard({ roomId, me, covered, ready, widgets, api, onEditPie
           } else if (g.wasSelected && e.type === 'pointerup') {
             // 고른 글씨·한 줄을 한 번 더 톡: 고치기
             const piece = docRef.current.pieces.find((x) => x.id === g.id);
-            if (piece && ['text', 'line', 'memo', 'list'].includes(piece.type)) onEditPiece(piece);
+            // 리스트는 창을 띄우지 않고 그 자리에서 바로 쓴다 (커서 깜빡)
+            if (piece?.type === 'list') startWriting(piece.id);
+            else if (piece && ['text', 'line', 'memo'].includes(piece.type)) onEditPiece(piece);
           }
           break;
         }
@@ -516,7 +566,8 @@ export function DecorBoard({ roomId, me, covered, ready, widgets, api, onEditPie
     const touch = (e: TouchEvent) => { if (editingRef.current) e.preventDefault(); };
     const key = (e: globalThis.KeyboardEvent) => {
       if (!editingRef.current) return;
-      if (e.key === 'Escape' && !document.querySelector('[role="dialog"]')) { e.preventDefault(); cancel(); }
+      if (document.querySelector('[role="dialog"]')) return; // 창이 떠 있으면 뒤 화면 단축키(Esc·되돌리기)도 쉰다
+      if (e.key === 'Escape') { e.preventDefault(); cancel(); }
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); if (e.shiftKey) redo(); else undo(); }
     };
     document.addEventListener('pointerdown', down, true);
@@ -542,6 +593,8 @@ export function DecorBoard({ roomId, me, covered, ready, widgets, api, onEditPie
     const sel = selectedRef.current;
     const p = sel ? docRef.current.placed[sel] : undefined;
     if (!editingRef.current || !sel || !p || p.lock) return;
+    // 창(스타일 바꾸기 등)이 떠 있으면 뒤 화면은 고치지 않는다 — 창을 스크롤해도 뒤 위젯이 돌지 않게 (2026-11-20)
+    if (document.querySelector('[role="dialog"]')) return;
     // 한 칸에 1°, Shift를 누르고 돌리면 0.2°
     const delta = e.deltaY || e.deltaX;
     patch(sel, { tilt: p.tilt + Math.sign(delta) * (e.shiftKey ? 0.2 : 1) }, false);
@@ -619,6 +672,7 @@ export function DecorBoard({ roomId, me, covered, ready, widgets, api, onEditPie
     },
     hiddenWidgets: () => docRef.current.hidden,
     getPiece: (id) => docRef.current.pieces.find((x) => x.id === id),
+    focus: (id) => enterEdit(id),
   };
 
   // ── 그리기 ──
@@ -629,7 +683,18 @@ export function DecorBoard({ roomId, me, covered, ready, widgets, api, onEditPie
       case 'art': return <ArtBody id={p.art} />;
       case 'text': {
         const f = fontOf(p.font);
-        return <span style={{ fontFamily: f.family, fontWeight: f.weight, fontSize: f.size, color: p.color }}>{p.text}</span>;
+        // 정렬·굵기·기울기·테두리 색 (2026-11-20). 값이 없으면 예전 모양 그대로
+        return (
+          <span
+            style={{
+              display: 'block', textAlign: p.align ?? 'center',
+              fontFamily: f.family, fontWeight: p.bold ? 800 : f.weight, fontStyle: p.italic ? 'italic' : undefined, textDecoration: p.underline ? 'underline' : undefined, fontSize: f.size, color: p.color,
+              WebkitTextStroke: p.stroke === 'none' ? '0' : p.stroke ? `6px ${p.stroke}` : undefined,
+            }}
+          >
+            {p.text}
+          </span>
+        );
       }
       case 'line': return p.text;
       case 'photo': {
@@ -651,11 +716,58 @@ export function DecorBoard({ roomId, me, covered, ready, widgets, api, onEditPie
           const dd = docRef.current;
           commit({ ...dd, pieces: dd.pieces.map((x) => (x.id === p.id && x.type === 'list' ? { ...x, items: fn(x.items) } : x)) });
         };
+        if (writing === p.id) {
+          // 화면 위에서 바로 쓰기: 칸은 3개부터, 마지막 칸에서 Enter를 누르면 한 칸씩 늘어난다 (최대 개수까지)
+          const count = Math.min(LIST_ITEMS, Math.max(LIST_MIN_ROWS, p.items.length, LIST_MIN_ROWS + extraRows));
+          const slots: ListItem[] = Array.from({ length: count }, (_, i) => p.items[i] ?? { text: '', done: false });
+          const setText = (i: number, v: string) => setItems((its) => {
+            const next = [...its];
+            while (next.length <= i) next.push({ text: '', done: false }); // 사이 빈 칸은 쓰기를 마칠 때 정리
+            next[i] = { ...next[i], text: [...v].slice(0, ITEM_MAX).join('') };
+            while (next.length && !next[next.length - 1].text) next.pop();
+            return next;
+          });
+          return (
+            <ListCard
+              kind={p.kind}
+              style={p.style}
+              year={p.year}
+              items={slots}
+              renderText={(i) => (
+                <input
+                  ref={(el) => { inputRefs.current[i] = el; }}
+                  className="wl__input"
+                  // 투두: 쓰는 글 길이만큼 칸이 넓어져 카드도 같이 넓어진다 (잘리지 않게, 2026-11-20)
+                  style={p.kind === 'todo' ? { width: `min(${Math.max(5, [...slots[i].text].length + 1)}em, 280px)` } : undefined}
+                  value={slots[i].text}
+                  aria-label={`${i + 1}번째 ${p.kind === 'bucket' ? '하고 싶은 것' : '할 일'}`}
+                  enterKeyHint="next"
+                  onChange={(e) => setText(i, e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.nativeEvent.isComposing) return; // 한글 조합 중에는 Enter·지우기를 가로채지 않는다
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      if (i < count - 1) inputRefs.current[i + 1]?.focus();
+                      else if (slots[i].text.trim() && count < LIST_ITEMS) {
+                        focusNext.current = count; // 새로 생긴 칸으로
+                        setExtraRows(count + 1 - LIST_MIN_ROWS);
+                      }
+                    }
+                    else if (e.key === 'Backspace' && !slots[i].text && i > 0) { e.preventDefault(); inputRefs.current[i - 1]?.focus(); }
+                    else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); stopWriting(); }
+                  }}
+                />
+              )}
+            />
+          );
+        }
         return (
           <ListCard
             kind={p.kind}
             style={p.style}
-            items={p.items}
+            year={p.year}
+            // 막 붙인 빈 리스트는 빈 항목 3개로 보여 준다
+            items={p.items.length ? p.items : Array.from({ length: LIST_MIN_ROWS }, () => ({ text: '', done: false }))}
             onToggle={(i) => setItems((its) => its.map((it, j) => (j === i ? { ...it, done: !it.done } : it)))}
             onToggleDay={(i, day) => setItems((its) => its.map((it, j) => {
               if (j !== i) return it;
@@ -705,6 +817,7 @@ export function DecorBoard({ roomId, me, covered, ready, widgets, api, onEditPie
             p?.lock ? 'is-locked' : '',
           ].join(' ');
           const common = {
+            'data-decor-id': d.id,
             ref: (el: HTMLElement | null) => { itemRefs.current[d.id] = el; },
             className, style,
             onPointerDown: onItemDown(d.id),

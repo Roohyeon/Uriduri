@@ -617,7 +617,7 @@
 
   /* 앞뒤 순서 손잡이: 왼쪽 가운데 */
   & .layer-rail {
-    position: fixed; z-index: 70; top: 50%;
+    position: fixed; z-index: 30; top: 50%; /* 아래 창(z 40) 뒤로 — 스타일 바꾸기 창을 가리지 않게 (2026-11-20 사용자 요청) */
     left: calc(max(0px, (100vw - var(--app-max)) / 2) + 8px);
     display: flex; flex-direction: column; align-items: center; gap: 6px;
     padding: 8px 4px;
@@ -1138,13 +1138,16 @@
 
 /* 아래에서 올라오는 창(스티커·글씨·한 줄): 뒤 화면이 비치는 둥근 유리판 */
 .diary .fixed.inset-0.bg-ink\/50 { background: rgb(30 26 40 / 0.18); }
+/* 스타일·위젯·스티커 고르는 유리 창이 뜨면: 뒤를 살짝 어둡게, 편집 막대(완료·앞뒤)까지 창 뒤 막으로 덮어 눌리지 않게 (2026-11-20 사용자 요청) */
+.diary .fixed.inset-0.bg-ink\/50 { z-index: 80; }
+.diary .fixed.inset-0.bg-ink\/50:has(.sheet-box--glass) { background: rgb(20 18 24 / 0.38); }
 .diary [role="dialog"].bg-paper {
   background: rgb(250 248 245 / 0.62);
-  -webkit-backdrop-filter: blur(30px) saturate(180%);
-  backdrop-filter: blur(30px) saturate(180%);
+  -webkit-backdrop-filter: blur(6px) saturate(180%);
+  backdrop-filter: blur(6px) saturate(180%); /* 2026-11-20 사용자 요청: 30px → 6px */
   border-top: 1px solid rgb(255 255 255 / 0.85);
   border-radius: 28px 28px 0 0;
-  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.9), 0 -10px 30px -12px rgb(40 36 60 / 0.3);
+  box-shadow: 0 -10px 30px -12px rgb(40 36 60 / 0.3); /* 2026-11-20 사용자 요청: 안쪽 흰 줄 뺌 */
 }
 
 /* 달력·책장 손잡이는 숨김 (옆으로 밀어서 연다). 키보드로 초점이 오면 그때만 보인다 */
@@ -1404,7 +1407,10 @@
 .diary .style-pick--frame { height: 160px; }
 .diary :is(.widget-pick, .style-pick):active { transform: scale(0.94); }
 .diary :is(.widget-pick, .style-pick):focus-visible { outline: 2px solid var(--d-ink); outline-offset: 2px; }
-.diary .style-pick.is-current { box-shadow: inset 0 0 0 2px var(--d-ink); }
+/* 지금 스타일: 진한 테두리 대신 연한 선 + 옅은 그림자, 바탕은 없음 (2026-11-20 사용자 요청) */
+.diary .style-pick.is-current {
+  box-shadow: inset 0 0 0 1.5px rgb(42 38 34 / 0.16), 0 6px 16px -10px rgb(40 36 60 / 0.35);
+}
 /* 그림은 칸 가운데에 띄워서 줄인다 (줄여도 원래 크기만큼 자리를 차지해서 넘치지 않게) */
 .diary :is(.widget-pick, .style-pick) { position: relative; overflow: hidden; }
 .diary .widget-pick__art,
@@ -1480,3 +1486,113 @@
 .paper-page .pp-card--copy .pp-card__label { display: block; }
 .paper-page .pp-card__icon { position: absolute; top: 14px; right: 16px; color: var(--d-ink-soft); }
 @media (prefers-reduced-motion: reduce) { .paper-page .pp-card--copy { transition: none; } }
+
+/* ───── 글씨 스티커 쓰기 (2026-11-20 사용자 요청: 입력칸 없이 검은 반투명 바탕에 바로 쓰기, 도구는 키보드 위) ─────
+ * 높이·위치는 visualViewport를 따라가서(TextComposer) 키보드가 올라오면 아래 도구 줄이 키보드 바로 위에 붙는다 */
+.tc {
+  position: fixed; left: 0; right: 0; z-index: 60;
+  display: flex; flex-direction: column;
+  background: rgb(0 0 0 / 0.62);
+  -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px);
+  color: #fff;
+}
+.tc__top {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: calc(10px + env(safe-area-inset-top)) 12px 6px;
+}
+.tc__btn { min-height: 44px; min-width: 64px; padding: 0 14px; border-radius: 999px; font-size: 16px; font-weight: 600; color: #fff; }
+.tc__btn--done { background: #fff; color: #2a2622; font-weight: 700; }
+.tc__btn--done:disabled { background: rgb(255 255 255 / 0.25); color: rgb(255 255 255 / 0.6); }
+.tc__count { font-family: var(--font-receipt); font-size: 13px; color: rgb(255 255 255 / 0.75); font-variant-numeric: tabular-nums; }
+.tc__stage { flex: 1; min-height: 0; display: flex; align-items: center; padding: 0 20px; overflow: hidden; }
+.tc__text {
+  display: block; width: 100%; resize: none; overflow: hidden;
+  border: 0; outline: none; background: transparent; padding: 0;
+  line-height: 1.2; caret-color: #fff; word-break: keep-all; overflow-wrap: anywhere;
+}
+.tc__text::placeholder { color: rgb(255 255 255 / 0.5); text-shadow: none; }
+.tc__tools { padding: 8px 12px calc(8px + env(safe-area-inset-bottom)); display: grid; gap: 8px; }
+.tc__row { display: flex; align-items: center; gap: 6px; overflow-x: auto; scrollbar-width: none; }
+.tc__row::-webkit-scrollbar { display: none; }
+.tc__chip {
+  flex: none; min-height: 40px; padding: 0 12px; border-radius: 999px;
+  background: rgb(255 255 255 / 0.14); color: #fff; border: 1.5px solid transparent;
+}
+.tc__chip[aria-pressed="true"] { background: #fff; color: #2a2622; }
+.tc__sep { flex: none; width: 1px; height: 22px; margin: 0 2px; background: rgb(255 255 255 / 0.3); }
+.tc__icon {
+  flex: none; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 999px;
+  font-size: 18px; color: #fff; background: rgb(255 255 255 / 0.14);
+}
+.tc__icon[aria-pressed="true"] { background: #fff; color: #2a2622; }
+.tc__seg { flex: none; display: flex; padding: 3px; border-radius: 999px; background: rgb(255 255 255 / 0.14); }
+.tc__seg button { min-height: 34px; padding: 0 12px; border-radius: 999px; font-size: 13px; font-weight: 600; color: #fff; }
+.tc__seg button[aria-pressed="true"] { background: #fff; color: #2a2622; }
+.tc__swatches { display: flex; gap: 4px; }
+.tc__swatch { flex: none; display: grid; place-items: center; width: 40px; height: 40px; border-radius: 999px; }
+.tc__swatch > span { width: 26px; height: 26px; border-radius: 999px; box-shadow: 0 0 0 1.5px rgb(255 255 255 / 0.55); }
+.tc__swatch[aria-pressed="true"] > span { box-shadow: 0 0 0 2px rgb(0 0 0 / 0.6), 0 0 0 4px #fff; }
+.tc__none { background: linear-gradient(135deg, transparent 45%, #ff5a4f 45% 55%, transparent 55%), rgb(255 255 255 / 0.15); }
+.tc :focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+/* 글씨 쓰기 도구 줄 (2026-11-20 사용자 요청): Aa | 무지개 팔레트 | 정렬 | BIU, 누르면 배경이 칠해지고 위에 선택지가 뜬다 */
+.tc .tc__text:focus,
+.tc .tc__text:focus-visible { outline: none; } /* 쓰는 칸에 네모 테두리가 안 뜨게 — 커서만 깜빡인다 */
+.tc__tools { gap: 6px; }
+.tc__row--main { justify-content: space-around; overflow: visible; padding-top: 6px; border-top: 1px solid rgb(255 255 255 / 0.15); }
+.tc__tools > .tc__row:not(.tc__row--main) { padding: 6px; border-radius: 16px; background: rgb(255 255 255 / 0.1); }
+.tc__tab {
+  display: grid; place-items: center; width: 52px; height: 44px; border-radius: 14px;
+  color: #fff; transition: background 120ms;
+}
+.tc__tab[aria-expanded="true"] { background: rgb(255 255 255 / 0.25); color: #fff; } /* 반투명 흰 배경, 아이콘은 흰색 그대로 (2026-11-20 사용자 요청) */
+.tc__aa { font-size: 20px; font-weight: 700; letter-spacing: -0.5px; }
+.tc__rainbow {
+  display: grid; place-items: center; width: 26px; height: 26px; border-radius: 999px;
+  background: conic-gradient(#ff4d4d, #ffb03b, #ffe14d, #4ccf6a, #3ab0ff, #6a5cff, #e45cff, #ff4d4d);
+}
+.tc__rainbow > span { width: 12px; height: 12px; border-radius: 999px; box-shadow: 0 0 0 2px #fff; }
+.tc__biu { display: flex; align-items: baseline; gap: 2px; font-size: 16px; }
+.tc__biu i { font-family: serif; }
+@media (prefers-reduced-motion: reduce) { .tc__tab { transition: none; } }
+/* 글씨가 잘리던 것: 손글씨 글꼴은 위아래·기울임이 칸 밖으로 나와서, 쓰는 칸에 여백과 줄 높이를 넉넉히 (2026-11-20) */
+.tc .tc__text { padding: 10px 14px; line-height: 1.4; overflow: visible; }
+.tc__stage { overflow: visible; }
+/* 테두리 탭 아이콘: 속을 채운 굵은 A (선만 있는 A는 어색해서 바꿈, 2026-11-20 사용자 요청) */
+/* 평소: 흰 글자 + 검정 테두리 / 눌렀을 때(흰 배경): 노랑 글자 + 검정 테두리 (2026-11-20 사용자 요청) */
+.tc__outline { font-size: 22px; font-weight: 900; line-height: 1; color: #fff; -webkit-text-stroke: 4px #2a2622; paint-order: stroke fill; }
+.tc__tab[aria-expanded="true"] .tc__outline { color: #2a2622; -webkit-text-stroke-color: #fff; } /* 눌렀을 때: 검정 글자 + 흰 테두리 */
+
+/* 스티커 붙이기·위젯 붙이기 창: 다른 아래 창(62%)보다 더 비치게 (2026-11-20 사용자 요청)
+ * 위 .diary [role="dialog"].bg-paper 규칙을 이기도록 같은 강도 선택자 + 뒤에 둔다 */
+.diary [role="dialog"].sheet-box--glass { background: rgb(255 255 255 / 0.6); } /* 회색빛 대신 흰색에 가깝게 (2026-11-20) */
+/* 아이폰 시트 손잡이: 잡고 아래로 끌면 닫힌다 */
+.sheet-grab { flex: none; padding: 8px 16px 6px; cursor: grab; touch-action: none; user-select: none; }
+.sheet-grab:active { cursor: grabbing; }
+.sheet-grab__bar { display: block; width: 38px; height: 5px; margin: 0 auto 12px; border-radius: 999px; background: rgb(42 38 34 / 0.25); }
+
+/* 버킷·투두 쓰기: 고른 디자인 그대로 크게 보여 주고 그 위에서 바로 쓴다 (2026-11-20 사용자 요청) */
+.list-compose { display: flex; justify-content: center; padding: 8px 0 4px; }
+.list-compose .wl { width: min(300px, 100%); font-size: 1.15em; }
+.wl__input {
+  width: 100%; min-width: 0; padding: 0; border: 0; outline: none; background: transparent;
+  font: inherit; color: inherit; letter-spacing: inherit;
+  border-bottom: 1px dashed rgb(42 38 34 / 0.25);
+}
+.wl__input:focus { border-bottom-color: rgb(42 38 34 / 0.6); }
+.sheet-back:hover { background: rgb(42 38 34 / 0.06); }
+/* 화면 위 리스트에 바로 쓰기: 끌기용 user-select:none 안에서도 입력칸은 커서·글쓰기가 되게 (아이폰 사파리) */
+.diary .decor .wl__input { -webkit-user-select: text; user-select: text; cursor: text; touch-action: manipulation; }
+/* 투두리스트 스타일 바꾸기: 지금 스타일은 아이가 그린 듯 삐뚤빼뚤한 빨간 점선 (2026-11-20 사용자 요청)
+ * 모양은 StylePicker의 SVG 선(끝이 시작점에서 만남), 선 굵기·점선 간격은 크기와 상관없이 일정 */
+.diary .style-pick--todo.is-current { box-shadow: none; }
+/* 카드 바깥을 둘러 그린다 — 카드 위를 지나가지 않게 (2026-11-20)
+ * 카드 크기의 20%만큼 바깥으로 넓혀서, 점선이 가장 안쪽으로 들어온 곳도 카드에서 떨어져 있게 (가로·세로 모두 비율이라 긴 카드도 안전) */
+.diary .style-pick__doodle { position: absolute; left: -20%; top: -20%; width: 140%; height: 140%; pointer-events: none; overflow: visible; }
+.diary .style-pick__doodle path { fill: none; stroke: var(--d-seal); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 7 6; }
+/* 투두 스타일 고르기: 점선이 칸 밖으로 조금 나가도 잘리지 않게 (2026-11-20) */
+.diary .style-pick--todo { overflow: visible; }
+.diary .style-pick--todo .style-pick__art { --pick-scale: 0.62; }
+.diary .style-pick--todo .style-pick__art:has(.wl--habit) { --pick-scale: 0.56; }
+/* 투두리스트: 항목 글이 길면 카드가 가로로 넓어진다 — 180px부터 340px까지, 그 이상은 줄바꿈 (2026-11-20 사용자 요청) */
+.diary .wl--todo:not(.wl--habit) { width: max-content; min-width: 180px; max-width: 340px; }
+.diary .wl--todo .wl__input { max-width: 100%; }

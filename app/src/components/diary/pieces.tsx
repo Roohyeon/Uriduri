@@ -71,6 +71,15 @@ export const TEXT_COLORS = [
   { v: '#c93a2b', name: '빨강' },
   { v: '#2f8a57', name: '초록' },
 ] as const;
+/** 글씨 테두리 색: 흰색이 기본, 'none'은 테두리 없음 (2026-11-20 사용자 요청) */
+export const TEXT_STROKES = [
+  { v: '#ffffff', name: '흰색' },
+  ...TEXT_COLORS,
+  { v: 'none', name: '없음' },
+] as const;
+export type TextAlign = 'left' | 'center' | 'right';
+/** 글씨 스티커 꾸밈 (모두 없으면 예전 모양: 가운데·보통·흰 테두리) */
+export type TextLook = { align?: TextAlign; bold?: boolean; italic?: boolean; underline?: boolean; stroke?: string };
 export const TEXT_MAX = 30; // 글자 수 (이모지도 1자)
 export const LINE_MAX = 50; // 한 줄: 영수증 메모와 같은 길이 (R4)
 export const MAX_LINES = 3;
@@ -89,11 +98,12 @@ export const clampText = (v: string, max: number, lines = MAX_LINES) => [...v.sp
 /* ───── 조각 ───── */
 export type Piece =
   | { id: string; type: 'art'; art: ArtId }
-  | { id: string; type: 'text'; text: string; font: TextFontId; color: string }
+  | ({ id: string; type: 'text'; text: string; font: TextFontId; color: string } & TextLook)
   | { id: string; type: 'line'; text: string; by: string }
   | { id: string; type: 'photo'; photoId: string; date: IsoDate }
   | { id: string; type: 'memo'; text: string; style: MemoStyle }
-  | { id: string; type: 'list'; kind: ListKind; items: ListItem[]; style: ListStyle }
+  /** year: 붙인 해 — 화면에 붙은 버킷리스트 제목을 '2026 버킷리스트'로 (2026-11-20) */
+  | { id: string; type: 'list'; kind: ListKind; items: ListItem[]; style: ListStyle; year?: number }
   /** photos: 칸마다 사진 id (빈 칸은 null), date·dplus: 붙인 날 (네컷·폴라로이드·인화 사진 글씨) */
   | { id: string; type: 'frame'; style: FrameStyle; photos: (string | null)[]; date?: IsoDate; dplus?: number };
 // Omit이 유니언을 무너뜨리지 않게 하나씩
