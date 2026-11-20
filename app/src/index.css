@@ -1578,6 +1578,15 @@
   font: inherit; color: inherit; letter-spacing: inherit;
   border-bottom: 1px dashed rgb(42 38 34 / 0.25);
 }
+/* 여러 줄 칸(textarea): 카드 폭에서 줄바꿈, 높이는 글에 맞춰 늘어난다 (2026-11-20 사용자 요청) */
+textarea.wl__input { display: block; resize: none; overflow: hidden; line-height: inherit; white-space: pre-wrap; overflow-wrap: anywhere; }
+/* 쓰는 칸: 보이지 않는 같은 글(sizer)과 입력칸을 한 칸에 겹쳐서, 글만큼 넓어지고 줄 수만큼 높아진다
+ * 줄마다 폭이 달라 밑줄 길이가 들쭉날쭉하지 않게, 쓰는 동안 글 자리는 카드 폭을 다 채운다 (2026-11-20 사용자 요청) */
+.diary .wl__text:has(> .wl__grow) { flex: 1; align-self: stretch; }
+.wl__grow { display: grid; width: 100%; }
+.wl__grow > * { grid-area: 1 / 1; }
+.wl__sizer { visibility: hidden; white-space: pre-wrap; overflow-wrap: anywhere; border-bottom: 1px solid transparent; pointer-events: none; }
+.wl__grow > textarea.wl__input { width: 100%; height: 100%; max-width: none; }
 .wl__input:focus { border-bottom-color: rgb(42 38 34 / 0.6); }
 .sheet-back:hover { background: rgb(42 38 34 / 0.06); }
 /* 화면 위 리스트에 바로 쓰기: 끌기용 user-select:none 안에서도 입력칸은 커서·글쓰기가 되게 (아이폰 사파리) */
@@ -1593,6 +1602,13 @@
 .diary .style-pick--todo { overflow: visible; }
 .diary .style-pick--todo .style-pick__art { --pick-scale: 0.62; }
 .diary .style-pick--todo .style-pick__art:has(.wl--habit) { --pick-scale: 0.56; }
-/* 투두리스트: 항목 글이 길면 카드가 가로로 넓어진다 — 180px부터 340px까지, 그 이상은 줄바꿈 (2026-11-20 사용자 요청) */
-.diary .wl--todo:not(.wl--habit) { width: max-content; min-width: 180px; max-width: 340px; }
-.diary .wl--todo .wl__input { max-width: 100%; }
+/* 투두리스트: 카드는 원래 폭(180px) 그대로, 긴 글은 카드 안에서 줄바꿈 (2026-11-21 사용자 요청 — 글만큼 넓어지던 것을 되돌림) */
+
+/* 쓰는 중 리스트 앞 체크 칸: 눌러서 다 한 일 표시 (2026-11-21 사용자 요청) */
+.diary .wl__box--btn { cursor: pointer; touch-action: manipulation; position: relative; }
+.diary .wl__box--btn::after { content: ""; position: absolute; inset: -8px; } /* 손가락으로 누르기 쉽게 누르는 자리만 넓힘 */
+.diary .wl__box--btn:focus-visible { outline: 2px solid var(--d-pen); outline-offset: 2px; }
+/* 편집 화면은 카드 안 버튼을 막아 두지만, 리스트에 쓰는 중이면 입력칸·체크 칸은 눌려야 한다 (다른 줄 누르기, 다 한 일 체크) */
+.diary.is-editing .decor .wl__input,
+.diary.is-editing .decor .wl__box--btn,
+.diary.is-editing .decor:has(.wl__input) .wl__dot { pointer-events: auto; }

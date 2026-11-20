@@ -38,7 +38,8 @@ type Doc = { placed: Record<string, Placed>; order: string[]; pieces: Piece[]; h
 type Saved = Record<string, { fx: number; fy: number; scale: number; tilt: number; flip?: boolean; lock?: boolean }>;
 
 const HOLD_MS = 350; // 꾹 누르기
-const SLOP = 8; // 이만큼 먼저 움직이면 누르기가 아니라 스와이프·끌기
+const DOUBLE_TAP_MS = 350; // 이 안에 두 번 누르면 더블클릭
+const SLOP = 8;// 이만큼 먼저 움직이면 누르기가 아니라 스와이프·끌기
 const KEY_STEP = 6;
 const MIN_SCALE = 0.3;
 const MAX_SCALE = 3;
@@ -134,7 +135,7 @@ export function DecorBoard({ roomId, me, covered, ready, widgets, api, onEditPie
     inputRefs.current[focusNext.current]?.focus({ preventScroll: true });
     focusNext.current = null;
   }, [extraRows]);
-  const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
+  const inputRefs = useRef<(HTMLTextAreaElement | null)[]>([]);
   const setSelected = (id: string | null) => { selectedRef.current = id; setSelectedState(id); };
   const [active, setActive] = useState<string | null>(null); // 지금 손으로 만지는 중
   const [turning, setTurning] = useState(false); // 돌리는 중: 각도 보여 주기
@@ -214,6 +215,8 @@ export function DecorBoard({ roomId, me, covered, ready, widgets, api, onEditPie
 
   // ── 크기 재기 + 저장한 자리에 놓기 (편집 중에는 자리를 건드리지 않는다) ──
   const gesture = useRef<Gesture | null>(null);
+  /** 두 번 톡을 알아보려고 마지막 톡을 기억한다 */
+  const lastTap = useRef<{ id: string; t: number; x: number; y: number } | null>(null);
   const layout = useCallback(() => {
     const root = rootRef.current;
     if (!root || !root.clientWidth) return;
@@ -302,7 +305,7 @@ export function DecorBoard({ roomId, me, covered, ready, widgets, api, onEditPie
       commit({ ...d, pieces: d.pieces.map((x) => (x.id === id && x.type === 'list' ? { ...x, items: x.items.filter((it) => it.text.trim()) } : x)) });
     }
   };
-  const startWriting = (id: string) => { writingRef.current = id; setWritingState(id); setExtraRows(0); };
+  const startWriting = (id: string) => { if (writingRef.current === id) return; writingRef.current = id; setWritingState(id); setExtraRows(0); };
   // 쓰기를 시작할 때 한 번만 첫 빈 칸에 커서를 둔다 (새 칸이 생길 때마다 초점이 옮겨 가던 문제 고침)
   useEffect(() => {
     if (!writing) return;
@@ -407,7 +410,7 @@ export function DecorBoard({ roomId, me, covered, ready, widgets, api, onEditPie
 
   const onItemDown = (id: string) => (e: ReactPointerEvent<HTMLElement>) => {
     if (e.button !== 0 || gesture.current?.kind === 'pinch') return;
-    if ((e.target as Element).closest?.('input')) return; // 리스트에 쓰는 중: 입력칸은 끌기 대신 글쓰기
+    if ((e.target as Element).closest?.('input, textarea')) return; // 리스트에 쓰는 중: 입력칸은 끌기 대신 글쓰기
     const p = docRef.current.placed[id];
     if (!p) return;
     if (!editingRef.current) {
@@ -525,10 +528,21 @@ export function DecorBoard({ roomId, me, covered, ready, widgets, api, onEditPie
       const g = gesture.current;
       if (!g) return;
       switch (g.kind) {
-        case 'press':
+        case 'press': {
           if (e.pointerId !== g.pid) return;
           window.clearTimeout(g.timer); // 톡: 원래 동작(영수증 열기 등)은 그대로
+          if (e.type !== 'pointerup') break;
+          // 보통 화면에서 두 번 톡(더블클릭): 편집 화면으로 들어가 바로 쓰기 (2026-11-20 사용자 요청)
+          const now = performance.now();
+          const last = lastTap.current;
+          if (last && last.id === g.id && now - last.t < DOUBLE_TAP_MS && Math.hypot(e.clientX - last.x, e.clientY - last.y) < SLOP * 3) {
+            lastTap.current = null;
+            const piece = docRef.current.pieces.find((x) => x.id === g.id);
+            if (piece?.type === 'list') { enterEdit(piece.id); startWriting(piece.id); }
+            else if (piece && ['text', 'line', 'memo'].includes(piece.type)) { enterEdit(piece.id); onEditPiece(piece); }
+          } else lastTap.current = { id: g.id, t: now, x: e.clientX, y: e.clientY };
           break;
+        }
         case 'move': {
           if (e.pointerId !== g.pid) return;
           if (g.moved) {
@@ -733,16 +747,31 @@ export function DecorBoard({ roomId, me, covered, ready, widgets, api, onEditPie
               style={p.style}
               year={p.year}
               items={slots}
+              // 쓰는 중에도 앞 칸을 눌러 다 한 일을 체크한다 (아직 글이 없는 빈 칸은 체크하지 않는다)
+              onToggle={(i) => { if (slots[i].text.trim()) setItems((its) => its.map((it, j) => (j === i ? { ...it, done: !it.done } : it))); }}
+              onToggleDay={(i, day) => {
+                if (!slots[i].text.trim()) return;
+                setItems((its) => its.map((it, j) => {
+                  if (j !== i) return it;
+                  const days = Array.from({ length: 7 }, (_, k) => !!it.days?.[k]);
+                  days[day] = !days[day];
+                  return { ...it, days, done: days.every(Boolean) };
+                }));
+              }}
               renderText={(i) => (
-                <input
+                // 한 줄 입력칸이면 긴 글이 잘려서, 카드 폭 안에서 줄바꿈되고 높이가 늘어나는 칸으로 (2026-11-20 사용자 요청)
+                // 보이지 않는 같은 글(wl__sizer)이 칸의 폭·높이를 정한다: 투두는 글만큼 카드가 넓어지다가 최대 폭에서 줄바꿈
+                <span className="wl__grow">
+                <span className="wl__sizer" aria-hidden="true">{slots[i].text + ' '}</span>
+                <textarea
                   ref={(el) => { inputRefs.current[i] = el; }}
+                  rows={1}
+                  cols={1}
                   className="wl__input"
-                  // 투두: 쓰는 글 길이만큼 칸이 넓어져 카드도 같이 넓어진다 (잘리지 않게, 2026-11-20)
-                  style={p.kind === 'todo' ? { width: `min(${Math.max(5, [...slots[i].text].length + 1)}em, 280px)` } : undefined}
                   value={slots[i].text}
                   aria-label={`${i + 1}번째 ${p.kind === 'bucket' ? '하고 싶은 것' : '할 일'}`}
                   enterKeyHint="next"
-                  onChange={(e) => setText(i, e.target.value)}
+                  onChange={(e) => setText(i, e.target.value.replace(/[\r\n]+/g, ' '))}
                   onKeyDown={(e) => {
                     if (e.nativeEvent.isComposing) return; // 한글 조합 중에는 Enter·지우기를 가로채지 않는다
                     if (e.key === 'Enter') {
@@ -757,6 +786,7 @@ export function DecorBoard({ roomId, me, covered, ready, widgets, api, onEditPie
                     else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); stopWriting(); }
                   }}
                 />
+                </span>
               )}
             />
           );
@@ -766,8 +796,8 @@ export function DecorBoard({ roomId, me, covered, ready, widgets, api, onEditPie
             kind={p.kind}
             style={p.style}
             year={p.year}
-            // 막 붙인 빈 리스트는 빈 항목 3개로 보여 준다
-            items={p.items.length ? p.items : Array.from({ length: LIST_MIN_ROWS }, () => ({ text: '', done: false }))}
+            // 항목이 3개보다 적으면 빈 줄로 채워 늘 3줄부터 보여 준다 (2026-11-20 사용자 요청)
+            items={[...p.items, ...Array.from({ length: Math.max(0, LIST_MIN_ROWS - p.items.length) }, () => ({ text: '', done: false }))]}
             onToggle={(i) => setItems((its) => its.map((it, j) => (j === i ? { ...it, done: !it.done } : it)))}
             onToggleDay={(i, day) => setItems((its) => its.map((it, j) => {
               if (j !== i) return it;

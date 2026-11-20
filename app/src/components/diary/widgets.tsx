@@ -124,9 +124,13 @@ export function ListCard({ kind, style, items, onToggle, onToggleDay, renderText
               </span>
             );
           }
+          // 쓰는 중(renderText)에는 줄 전체가 버튼일 수 없어서(안에 입력칸), 앞의 체크 칸만 따로 눌러 다 한 일을 표시한다 (2026-11-21 사용자 요청)
+          const writingToggle = renderText && onToggle;
           const inner = (
             <>
-              <span className="wl__box" aria-hidden="true">{mark(it)}</span>
+              {writingToggle ? (
+                <button type="button" role="checkbox" aria-checked={it.done} aria-label={`${i + 1}번째 항목 ${it.done ? '다 함 표시 지우기' : '다 했어요 표시'}`} className="wl__box wl__box--btn" onClick={() => onToggle(i)}>{mark(it)}</button>
+              ) : <span className="wl__box" aria-hidden="true">{mark(it)}</span>}
               <span className="wl__text">{renderText ? renderText(i) : it.text}</span>
               {style === 'passport' && it.done && <span className="wl__stamp" aria-hidden="true">DONE</span>}
               {style === 'ticket' && <span className="wl__punch" aria-hidden="true" />}
@@ -134,7 +138,7 @@ export function ListCard({ kind, style, items, onToggle, onToggleDay, renderText
           );
           return (
             <span key={i} role="listitem" className={`wl__item ${it.done ? 'is-done' : ''}`}>
-              {onToggle ? (
+              {onToggle && !writingToggle ? (
                 <button type="button" role="checkbox" aria-checked={it.done} className="wl__btn" onClick={() => onToggle(i)}>{inner}</button>
               ) : <span className="wl__btn">{inner}</span>}
             </span>
